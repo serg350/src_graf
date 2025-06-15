@@ -1,0 +1,13 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<div style="margin: 20px;">
+    <h1>{{ graph.name }}</h1>
+    <div style="width: 100%; overflow: auto; border: 1px solid #ddd; padding: 10px;">
+        {{ svg_content|safe }}
+    </div>
+    <div style="margin-top: 20px;">
+        <a href="{% url 'admin:comwpc_graph_change' graph.id %}" class="button">Вернуться к редактированию</a>
+    </div>
+</div>
+{% endblock %}
