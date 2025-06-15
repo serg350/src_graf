@@ -3,6 +3,9 @@ from django.db import models
 class Graph(models.Model):
     name = models.CharField(max_length=255, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    parent_graph = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='subgraphs')
+    is_subgraph = models.BooleanField(default=False)
+    raw_dot = models.TextField(blank=True, null=True)
 
     def __str__(self):
         return self.name
@@ -11,6 +14,9 @@ class State(models.Model):
     name = models.CharField(max_length=255)
     is_terminal = models.BooleanField(default=False)
     graph = models.ForeignKey(Graph, on_delete=models.CASCADE)
+    subgraph = models.ForeignKey(Graph, null=True, blank=True, on_delete=models.SET_NULL, related_name='parent_states')
+    comment = models.TextField(blank=True)
+    array_keys_mapping = models.JSONField(blank=True, null=True)
 
     def __str__(self):
         return f"{self.name} ({self.graph})"
