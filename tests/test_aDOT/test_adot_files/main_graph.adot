@@ -1,0 +1,20 @@
+digraph MAIN_GRAPH {
+    // Функции
+    MAIN_PROCESS [module=test_funcs.simplest, entry_func=process_data]
+
+    / Функции-предикаты
+    ALWAYS_TRUE [module=test_funcs.simplest, entry_func=true_predicate, comment = pred_ALWAYS_TRUE]
+
+    // Морфизмы
+    EDGE_MAIN [predicate=ALWAYS_TRUE, function=MAIN_PROCESS, comment = edge_1]
+
+    // Главный граф
+    PREPROCESS [subgraph=./test_adot_files/preprocess.adot]
+    POSTPROCESS [subgraph=./test_adot_files/postprocess.adot]
+
+
+    __BEGIN__ -> PREPROCESS
+    PREPROCESS -> MAIN_PROCESS [morphism=EDGE_MAIN]
+    MAIN_PROCESS -> POSTPROCESS
+    POSTPROCESS -> __END__
+}

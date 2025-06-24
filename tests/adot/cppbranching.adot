@@ -1,0 +1,28 @@
+digraph SIMPLEST {
+    FUNCA [module=libtest, entry_func=IncA]
+    FUNCB [module=libtest, entry_func=IncB]
+    
+    CHECKA [module=libtest, entry_func=CheckAEq4]
+    CHECKB [module=libtest, entry_func=CheckBEq4]
+    
+    SETA [module=libtest, entry_func=SetAEq1]
+    SETB [module=libtest, entry_func=SetBEq1]
+
+    PASS [module=libtest, entry_func=PassFunc]
+    PRED [module=libtest, entry_func=PassPred]
+
+    INCR_A [predicate=PRED, function=FUNCA]
+    INCR_B [predicate=PRED, function=FUNCB]
+    CH_A [predicate=CHECKA, function = PASS]
+    SET_A [predicate=PRED, function=SETA]
+    SET_B [predicate=PRED, function=SETB]
+    CH_B [predicate=CHECKB, function = PASS]
+    
+    __BEGIN__ -> ROT [morphism=SET_A]
+    ROT -> ROOT[morphism=SET_B]
+    ROOT ->  BR1, BR2 [morphism=(INCR_A, INCR_B)]
+    BR1 -> BR1_ST [morphism=INCR_A]
+    BR2 -> BR2_ST [morphism=INCR_B]
+    BR1_ST, BR2_ST -> MERGE [morphism=(INCR_A, INCR_B)]
+    MERGE -> __END__, __END__ [morphism=(CH_A, CH_B)]
+} 

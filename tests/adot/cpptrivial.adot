@@ -1,0 +1,9 @@
+digraph SIMPLE {
+    FUNC [module=libtest, entry_func=IncA]
+    PRED [module=libtest, entry_func=PassPred]
+    MORPH [predicate=PRED, function=FUNC]
+
+        __BEGIN__ -> ST1 [morphism = MORPH]
+    ST1 -> ST2 [morphism = MORPH]
+    ST2 -> __END__ [morphism = MORPH]
+}

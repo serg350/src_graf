@@ -6,6 +6,10 @@ from comwpc import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('admin/comwpc/graph/import-dot/',
+         views.import_dot,
+         name='comwpc_import_dot'
+         ),
     path('graph-visualization/<int:graph_id>/',
          views.graph_interactive_view,
          name='graph_visualization'),

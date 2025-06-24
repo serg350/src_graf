@@ -1,0 +1,14 @@
+digraph TEST_SUB {
+    FUNC [module=test_funcs.simplest, entry_func=increment_a_edge]
+    PRED [module=test_funcs.simplest, entry_func=positiveness_predicate]
+    MORPH [predicate=PRED, function=FUNC]
+    SEL [module=test_funcs.simplest, entry_func=selector_a_nonpositive]
+    
+    ST2 [subgraph = tests/adot/file.adot]
+    ST3 [selector = SEL]
+
+    __BEGIN__ -> ST1 [morphism = MORPH]
+    ST1 -> ST2 
+    ST2 -> ST3 
+    ST3 -> __END__ 
+}

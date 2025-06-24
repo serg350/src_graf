@@ -1,0 +1,17 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<div id="content-main">
+    <h1>Import Graph from aDOT File</h1>
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="form-row">
+            {{ form.dot_file.label_tag }}
+            {{ form.dot_file }}
+        </div>
+        <div class="submit-row">
+            <input type="submit" value="Import" class="default">
+        </div>
+    </form>
+</div>
+{% endblock %}

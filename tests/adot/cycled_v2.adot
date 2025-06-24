@@ -1,0 +1,17 @@
+digraph CYCLIC {
+    // Селектор для узла LOOP
+    SEL_LOOP [module="selectors", entry_func="check_iterations"]
+
+    // Объявление функций
+    FUNC [module=test_funcs.simplest, entry_func=decrement_a_edge]
+    PRED [module=test_funcs.simplest, entry_func=true_predicate]
+    MORPH_LOOP [predicate=PRED, function=FUNC]
+    MORPH_EXIT [function=INC]
+
+    LOOP [selector=SEL_LOOP]  # Привязка селектора к узлу
+
+    // Топология
+    __BEGIN__ -> LOOP [edge_index=0]
+    LOOP -> LOOP [morphism=MORPH_LOOP, edge_index=1]
+    LOOP -> __END__ [morphism=MORPH_EXIT, edge_index=2]
+}

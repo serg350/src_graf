@@ -1,0 +1,18 @@
+digraph CYCLED {
+
+    SETA [module=libtest, entry_func=SetAEq10]
+    FUNC [module=libtest, entry_func=DecA]
+    PRED [module=libtest, entry_func=PassPred]
+
+    SET [predicate=PRED, function=SETA]
+    MORPH [predicate=PRED, function=FUNC]
+
+    SEL [module = libtest, entry_func=SelectorA]
+
+    ST2 [selector = SEL]
+    
+    __BEGIN__ -> ST1 [morphism=SET]
+    ST1 -> ST2 [morphism=MORPH]
+    ST2 -> ST1 [order=1]
+    ST2 -> __END__ [order = 2]
+}

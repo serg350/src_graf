@@ -5,8 +5,10 @@ from django.utils.html import format_html
 import graphviz
 from io import BytesIO
 import base64
-from django.urls import reverse
+from django.urls import reverse, path
 from django.utils.safestring import mark_safe
+
+from .views import import_dot
 
 
 class TransferInline(admin.TabularInline):
@@ -131,6 +133,22 @@ class GraphAdmin(admin.ModelAdmin):
         )
 
     graph_interactive.short_description = "Интерактивный просмотр"
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('import-dot/',
+                 self.admin_site.admin_view(import_dot),
+                 name='import_dot'  # Используем простое имя
+            ),
+        ]
+        return custom_urls + urls
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        # Формируем URL без указания приложения
+        extra_context['import_dot_url'] = reverse('admin:import_dot')
+        return super().changelist_view(request, extra_context=extra_context)
 
 
 @admin.register(State)

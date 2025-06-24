@@ -1,0 +1,16 @@
+digraph EDGE_TYPES_TEST {
+    // Определение функций
+    FUNC_A [module=test_funcs.simplest, entry_func=increment_a_edge]
+    FUNC_B [module=test_funcs.simplest, entry_func=increment_b_edge]
+    TRUE_PRED [module=test_funcs.simplest, entry_func=true_predicate]
+
+    // Определение разных типов ребер
+    EDGE_SIMPLE [predicate=TRUE_PRED, function=FUNC_A, comment="Обычное ребро (->)"]
+    EDGE_PARALLEL [predicate=TRUE_PRED, function=FUNC_B, comment="Параллельное ребро (=>)"]
+
+    // Определение узлов
+    __BEGIN__ -> NODE_START
+    NODE_START -> NODE_MIDDLE [morphism=EDGE_SIMPLE, order=0]
+    NODE_START => NODE_MIDDLE [morphism=EDGE_PARALLEL, order=1]
+    NODE_MIDDLE -> __END__
+}

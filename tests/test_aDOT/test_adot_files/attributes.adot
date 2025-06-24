@@ -1,0 +1,22 @@
+digraph ATTRIBUTES_TEST {
+    // Тестовые функции
+    FUNC1 [module=test_funcs.simplest, entry_func=increment_a_edge, comment="Функция инкремента A"]
+    FUNC2 [module=test_funcs.simplest, entry_func=increment_b_edge, comment="Функция инкремента B"]
+    PRED [module=test_funcs.simplest, entry_func=nonzero_predicate, comment="Предикат проверки ненулевого значения"]
+    SEL [module=test_funcs.simplest, entry_func=branch_selector, comment="Селектор ветвления"]
+
+    // Узлы с атрибутами
+    NODE1 [selector=SEL, parallelism=threading]
+
+    NODE2 [subgraph=D:/Dev_MGTY/src/tests/test_aDOT/test_adot_files/preprocess.adot]
+
+    // Ребра с атрибутами
+    EDGE1 [predicate=PRED, function=FUNC1, comment="Первое ребро с полным набором атрибутов"]
+
+    EDGE2 [function=FUNC1, comment="Второе ребро с множественными морфизмами"]
+
+    // Структура графа
+    __BEGIN__ -> NODE1 [morphism=EDGE1]
+    NODE1 -> NODE2 [morphism=EDGE2]
+    NODE2 -> __END__
+}

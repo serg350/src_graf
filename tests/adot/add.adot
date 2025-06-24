@@ -1,0 +1,8 @@
+digraph ADD {
+    FUNC [module=test_funcs.simplest, entry_func=increment_b_edge]
+    PRED [module=test_funcs.simplest, entry_func=positiveness_predicate]
+    MORPH [predicate=PRED, function=FUNC, comment="ADD"]
+    
+    __BEGIN__ ->  ST [morphism = MORPH]
+    ST -> __END__ 
+}

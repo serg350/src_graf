@@ -1,0 +1,21 @@
+digraph CYCLED {
+    // Определение функций
+    DECREMENT_A [module=test_funcs.simplest, entry_func=decrement_a_edge]
+    NONZERO_PRED [module=test_funcs.simplest, entry_func=positiveness_predicate]
+    NONPOS_SELECTOR [module=test_funcs.simplest, entry_func=selector_a_positive]
+    DUMMY_FUNC [module=test_funcs.simplest, entry_func=dummy_edge]
+
+    // Определение морфизмов
+    DECREMENT_EDGE [predicate=NONZERO_PRED, function=DECREMENT_A, comment="Уменьшает a на 1 пока a != 0"]
+    EXIT_EDGE [function=DUMMY_FUNC, comment="Выход из цикла"]
+
+    // Определение узлов
+    ST1 [comment="Начальное состояние цикла"]
+    ST2 [selector=NONPOS_SELECTOR, comment="Узел с селектором"]
+
+    // Определение графа
+    __BEGIN__ -> ST1 [comment="Начало выполнения"]
+    ST1 -> ST2 [morphism=DECREMENT_EDGE, comment="Переход с уменьшением a"]
+    ST2 -> ST1 [order=1, comment="Продолжение цикла если a > 0"]
+    ST2 -> __END__ [order=2, morphism=EXIT_EDGE, comment="Выход если a <= 0"]
+}

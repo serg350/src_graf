@@ -1,0 +1,14 @@
+digraph CYCLED {
+    FUNC [module=test_funcs.simplest, entry_func=decrement_a_edge]
+    PRED [module=test_funcs.simplest, entry_func=true_predicate]
+    MORPH [predicate=PRED, function=FUNC]
+
+    SEL [module = test_funcs.simplest, entry_func = selector_a_nonpositive]
+
+    ST2 [selector = SEL]
+    
+    __BEGIN__ -> ST1 
+    ST1 -> ST2 [morphism=MORPH]
+    ST2 -> ST1 [order=2]
+    ST2 -> __END__ [order = 1]
+}

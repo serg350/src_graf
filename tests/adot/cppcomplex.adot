@@ -1,0 +1,15 @@
+digraph SIMPLEST {
+    FUNCA [module=test_funcs.simplest, entry_func=increment_a_edge]
+    PRED [module=test_funcs.simplest, entry_func=true_predicate]
+    
+    INCR_A [predicate=PRED, function=FUNCA]
+    
+    ST1 [subgraph=tests/adot/cpptrivial.adot]
+    ST2 [subgraph=tests/adot/cppcycled.adot]
+    ST3 [subgraph=tests/adot/cppbranching.adot]
+
+    __BEGIN__ -> ST1 
+    ST1 -> ST2 
+    ST2 -> ST3 
+    ST3 -> __END__ 
+} 
