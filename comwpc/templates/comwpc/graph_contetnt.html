@@ -1,0 +1,21 @@
+<!-- templates/comwpc/graph_content.html -->
+<div class="content">
+    <h2>{{ graph.name }}</h2>
+    <div style="width: 100%; overflow: auto; border: 1px solid #ddd; padding: 10px;">
+        {{ svg_content|safe }}
+    </div>
+</div>
+
+<script>
+// Повторно инициализируем обработчики после загрузки контента
+document.addEventListener('DOMContentLoaded', function() {
+    // Функция для открытия подграфа в модальном окне
+    function openSubgraph(graphId) {
+        // Та же реализация, что и в основном шаблоне
+        // ...
+    }
+
+    // Инициализация функции для новых элементов
+    window.openSubgraph = openSubgraph;
+});
+</script>

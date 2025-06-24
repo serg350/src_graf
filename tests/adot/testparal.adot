@@ -1,0 +1,17 @@
+digraph SIMPLEST {
+    FUNCA [module=test_funcs.simplest, entry_func=increment_a_edge]
+    FUNCB [module=test_funcs.simplest, entry_func=increment_b_edge]
+    PRED [module=test_funcs.simplest, entry_func=positiveness_predicate]
+    INCR_A [predicate=PRED, function=FUNCA]
+    INCR_B [predicate=PRED, function=FUNCB]
+    
+
+    __BEGIN__ -> ROOT
+    ROOT ->  BR1, BR2, BR3 [morphism=(INCR_A, INCR_A, INCR_A)]
+    //BR3 -> SIBL3_BR1, SIBL3_BR2 [morphism=(INCR_A, INCR_A)]
+    //BR2 -> SIBL2_BR1, SIBL2_BR2 [morphism=(INCR_A, INCR_A)]
+    //SIBL3_BR1 -> SIBL3_BR1_1,  SIBL3_BR1_2 [morphism=(INCR_A, INCR_A)]
+    //SIBL3_BR1_1,  SIBL3_BR1_2 -> TERM  [morphism=(INCR_A, INCR_A)]
+    //BR1,  SIBL2_BR1, SIBL2_BR2, TERM, SIBL3_BR2 ->  __END__ [morphism=(INCR_A, INCR_A, INCR_A, INCR_A, INCR_A)]
+    BR1, BR2, BR3 -> __END__ [morphism=(INCR_A, INCR_A, INCR_A)]
+} 

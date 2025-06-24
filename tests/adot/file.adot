@@ -1,0 +1,54 @@
+digraph gcdhom_inverted_model_pso
+{
+// Определение функций-обработчиков
+	PASS_PROCESSOR [module=libcomsdk, entry_func=pass_processor]
+	CHECK_PSO_AGENT_REINIT [module=libgcdfes, entry_func=check_pso_agent_reinit, comment="Проверка о необходимости реинициализации отдельной частицы (смещение частицы) в рое в рамках метода роя частиц."]
+	CHECK_PSO_SWARM_REINIT [module=libgcdfes, entry_func=check_pso_swarm_reinit, comment="Проверка о необходимости реинициализации всего роя частиц в рамках метода роя частиц."]
+
+	PSO_AGENT_REINIT [module=libgcdfes, entry_func=pso_agent_reinit, comment="Реинициализация отдельной частицы (смещение частицы) в рое в рамках метода роя частиц."]
+	PSO_SWARM_REINIT [module=libgcdfes, entry_func=pso_swarm_reinit, comment="Реинициализация всего роя частиц в рамках метода роя частиц."]
+	
+	PSO_SWARM_ANALYSING [module=libgcdfes, entry_func=pso_swarm_analysing, comment="Анализ всего роя частиц в рамках метода роя частиц."]
+	
+	PSO_HOM_AGENT_POSTPROC [module=libgcdfes, entry_func=pso_hom_agent_postproc, comment="Постпроцессинг после решения отдельной задачи методом асимптотического осреднения."]
+	
+	PSO_TASK_DATA_REINIT [module=libgcdfes, entry_func=pso_task_data_reinit, comment="Реинициализация постановки задачи анализа эффективных характеристик КМ методом асимптотического осреднения."]
+	
+	PSO_AGENT_INIT [module=libgcdfes, entry_func=pso_agent_init, comment="Инициализация отдельной частицы в рамках метода роя частиц."]
+
+	PSO_SWARM_INIT [module=libgcdfes, entry_func=pso_swarm_init, comment="Инициализация роя частиц."]
+	
+	PSO_INIT [module=libgcdfes, entry_func=pso_swarm_init, comment="Инициализация метода роя частиц."]
+
+// Определение функций-предикатов
+	PASS_PREDICATE [module=libcomsdk, entry_func=pass_predicate]
+	
+// Определение морфизмов
+	PASS_MORPHISM [predicate=PASS_PREDICATE, function=PASS_PROCESSOR, comment="ПАСС, морфизм."]
+	
+	PSO_AGENT_REINIT_MORPHISM [predicate=PASS_PREDICATE, function=PSO_AGENT_REINIT]
+	PSO_SWARM_REINIT_MORPHISM [predicate=PASS_PREDICATE, function=PSO_SWARM_REINIT]
+	PSO_SWARM_ANALYSING_MORPHISM [predicate=PASS_PREDICATE, function=PSO_SWARM_ANALYSING]
+	PSO_HOM_AGENT_POSTPROC_MORPHISM [predicate=PASS_PREDICATE, function=PSO_HOM_AGENT_POSTPROC] 
+	PSO_TASK_DATA_REINIT_MORPHISM [predicate=PASS_PREDICATE, function=PSO_TASK_DATA_REINIT] 
+	PSO_AGENT_INIT_MORPHISM [predicate=PASS_PREDICATE, function=PSO_AGENT_INIT] 
+	PSO_SWARM_INIT_MORPHISM [predicate=PASS_PREDICATE, function=PSO_SWARM_INIT] 
+	PSO_INIT_MORPHISM [predicate=PASS_PREDICATE, function=PSO_INIT] 
+	
+// Определение атрибутов узлов	
+	S_1 [subgraph=gcdhom_preprocessor.adot]
+	S_5 [subgraph=gcdhom_processor.adot]
+	S_6 [selector=CHECK_PSO_AGENT_REINIT]
+	S_7 [selector=CHECK_PSO_SWARM_REINIT]
+
+// Определение топологии графовой модели метода конечных элементов
+	__BEGIN__ -> S_1
+	S_1 -> S_2 [morphism=PSO_INIT_MORPHISM]
+	S_2 -> S_3 [morphism=PSO_SWARM_INIT_MORPHISM]
+	S_3 -> S_4 [morphism=PSO_AGENT_INIT_MORPHISM]
+	S_4 -> S_5 [morphism=PSO_TASK_DATA_REINIT_MORPHISM]
+	S_5 -> S_6 [morphism=PSO_HOM_AGENT_POSTPROC_MORPHISM]
+	S_6 -> S_4, S_7 [morphism=(PSO_AGENT_REINIT_MORPHISM, PSO_SWARM_ANALYSING_MORPHISM), order=(10,20)]
+	S_7 -> S_4, S_8 [morphism=(PSO_SWARM_REINIT_MORPHISM, PASS_MORPHISM), order=(30,40)]
+	S_8 -> __END__ [comment = "Расчет завершён."]
+}

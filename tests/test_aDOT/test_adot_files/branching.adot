@@ -1,0 +1,17 @@
+digraph BRANCHING_TEST {
+    / Функции
+    PROCESS_A [module=test_funcs.simplest, entry_func=process_a]
+    PROCESS_B [module=test_funcs.simplest, entry_func=process_b]
+
+    // Морфизмы
+    EDGE_A [function=PROCESS_A]
+    EDGE_B [function=PROCESS_B]
+
+    // Граф
+    __BEGIN__ -> DECISION_POINT
+    DECISION_POINT -> BRANCH_A [morphism=EDGE_A]
+    DECISION_POINT -> BRANCH_B [morphism=EDGE_B]
+    BRANCH_A -> MERGE_POINT
+    BRANCH_B -> MERGE_POINT
+    MERGE_POINT -> __END__
+}

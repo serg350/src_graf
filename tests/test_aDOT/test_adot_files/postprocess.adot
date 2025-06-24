@@ -1,0 +1,16 @@
+digraph POSTPROCESS {
+    // Функции постобработки
+    SAVE_RESULT [module=test_funcs.simplest, entry_func=save_result]
+    CLEANUP [module=test_funcs.simplest, entry_func=cleanup]
+
+    / Функции-предикаты
+    ALWAYS_TRUE [module=test_funcs.simplest, entry_func=true_predicate, comment = pred_ALWAYS_TRUE_postprocess]
+
+    // Морфизмы
+    EDGE_1 [predicate=ALWAYS_TRUE, function=SAVE_RESULT, comment = edge_1_postprocess]
+    EDGE_2 [predicate=ALWAYS_TRUE, function=CLEANUP, comment = edge_2_postprocess]
+
+    __BEGIN__ -> SAVE
+    SAVE -> FINAL [morphism=EDGE_1]
+    FINAL -> __END__ [morphism=EDGE_2]
+}

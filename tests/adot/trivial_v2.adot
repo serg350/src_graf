@@ -1,0 +1,11 @@
+digraph TRIVIAL {
+    // Объявление функций
+    FUNC [module=test_funcs.simplest, entry_func=increment_a_edge]
+    PRED [module=test_funcs.simplest, entry_func="always_true"]
+    MORPH [predicate=PRED, function=FUNC, comment="Basic increment"]
+
+    // Топология
+    __BEGIN__ -> STEP1 [morphism=MORPH, edge_index=0]
+    STEP1 -> STEP2 [morphism=MORPH, edge_index=1]
+    STEP2 -> __END__ [morphism=MORPH, edge_index=2]
+}

@@ -1,0 +1,17 @@
+digraph SEQUENTIAL_TEST {
+    // Функции-обработчики
+    INCREMENT [module=test_funcs.simplest, entry_func=increment_a_edge, comment = func_INCREMENT]
+    DOUBLE [module=test_funcs.simplest, entry_func=increment_a_double, comment = func_DOUBLE]
+
+    // Функции-предикаты
+    ALWAYS_TRUE [module=test_funcs.simplest, entry_func=true_predicate, comment = pred_ALWAYS_TRUE]
+
+    // Морфизмы
+    EDGE_1 [predicate=ALWAYS_TRUE, function=INCREMENT, comment = edge_1]
+    EDGE_2 [predicate=ALWAYS_TRUE, function=DOUBLE, comment = edge_2]
+
+    // Граф
+    __BEGIN__ -> STEP_1 [morphism=EDGE_1]
+    STEP_1 -> STEP_2 [morphism=EDGE_2]
+    STEP_2 -> __END__
+}

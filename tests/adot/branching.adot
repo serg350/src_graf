@@ -1,0 +1,15 @@
+digraph SIMPLEST {
+    FUNCA [module=test_funcs.simplest, entry_func=increment_a_edge, comment="name FUNC_A"]
+    FUNCB [module=test_funcs.simplest, entry_func=increment_b_edge, comment="name FUNC_B"]
+    PRED [module=test_funcs.simplest, entry_func=true_predicate, comment="name PRED"]
+    
+    INCR_A [predicate=PRED, function=FUNCA, comment="name INCR_A"]
+    INCR_B [predicate=PRED, function=FUNCB, comment="name INCR_B"]
+
+    __BEGIN__ -> ROOT
+    ROOT ->  BR1, BR2 [morphism=(INCR_A, INCR_B)]
+    BR1 -> BR1_ST [morphism=INCR_A]
+    BR2 -> BR2_ST [morphism=INCR_B]
+    BR1_ST, BR2_ST -> MERGE [morphism=(INCR_A, INCR_B)]
+    MERGE -> __END__
+} 

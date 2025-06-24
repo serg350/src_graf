@@ -1,0 +1,17 @@
+digraph PREPROCESS {
+    // Функции предобработки
+    INIT_DATA [module=test_funcs.simplest, entry_func=init_data, comment=""]
+    VALIDATE [module=test_funcs.simplest, entry_func=validate_data]
+
+    / Функции-предикаты
+    ALWAYS_TRUE [module=test_funcs.simplest, entry_func=true_predicate, comment = pred_ALWAYS_TRUE]
+
+    // Морфизмы
+    EDGE_1 [predicate=ALWAYS_TRUE, function=INIT_DATA, comment = edge_1]
+    EDGE_2 [predicate=ALWAYS_TRUE, function=VALIDATE, comment = edge_2]
+
+
+    __BEGIN__ -> INIT
+    INIT -> VALIDATE [morphism=EDGE_1]
+    VALIDATE -> __END__ [morphism=EDGE_2]
+}
