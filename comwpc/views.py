@@ -228,14 +228,24 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
     with open(dot_path, 'r', encoding='utf-8') as f:
         dot_content = f.read()
 
-    graph = Graph.objects.create(
-        name=parser.fact.name,
-        raw_dot=dot_content,
-        is_subgraph=parent_graph is not None,
-        parent_graph=parent_graph
-    )
+    # Проверяем, существует ли граф с таким именем
+    graph_name = parser.fact.name
+    existing_graph = Graph.objects.filter(name=graph_name, is_subgraph=(parent_graph is not None)).first()
+
+    if existing_graph:
+        graph = existing_graph
+        print(f"Используем существующий граф: {graph.name} (ID: {graph.id})")
+    else:
+        # Создаем новый граф
+        graph = Graph.objects.create(
+            name=graph_name,
+            raw_dot=dot_content,
+            is_subgraph=parent_graph is not None,
+            parent_graph=parent_graph
+        )
+        print(f"Создан новый граф: {graph.name} (ID: {graph.id}), is_subgraph={parent_graph is not None}")
+
     processed_graphs[dot_path] = graph
-    print(f"Создан граф: {graph.name} (ID: {graph.id}), is_subgraph={parent_graph is not None}")
 
     # Получаем все сущности графа
     entities = getattr(parser.fact, 'entities', {})
@@ -284,16 +294,29 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
                     sub_parser = Parser()
                     sub_comsdk_graph = sub_parser.parse_file(temp_subgraph_path)
 
-                    # Рекурсивно обрабатываем подграф
-                    subgraph_obj = process_graph_recursively(
-                        parser=sub_parser,
-                        comsdk_graph=sub_comsdk_graph,
-                        dot_path=temp_subgraph_path,
-                        temp_dir=temp_dir,
-                        processed_graphs=processed_graphs,
-                        parent_graph=graph
-                    )
-                    print(f"Создан подграф: {subgraph_obj.name} (ID: {subgraph_obj.id})")
+                    # Получаем имя подграфа
+                    subgraph_name = sub_parser.fact.name
+
+                    # Проверяем, существует ли подграф в базе данных
+                    existing_subgraph = Graph.objects.filter(
+                        name=subgraph_name,
+                        is_subgraph=True
+                    ).first()
+
+                    if existing_subgraph:
+                        print(f"Используем существующий подграф: {existing_subgraph.name} (ID: {existing_subgraph.id})")
+                        subgraph_obj = existing_subgraph
+                    else:
+                        # Рекурсивно обрабатываем подграф
+                        subgraph_obj = process_graph_recursively(
+                            parser=sub_parser,
+                            comsdk_graph=sub_comsdk_graph,
+                            dot_path=temp_subgraph_path,
+                            temp_dir=temp_dir,
+                            processed_graphs=processed_graphs,
+                            parent_graph=graph
+                        )
+                        print(f"Создан новый подграф: {subgraph_obj.name} (ID: {subgraph_obj.id})")
                 except Exception as e:
                     print(f"Ошибка обработки подграфа: {str(e)}")
             else:
@@ -346,14 +369,28 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
                             target_sub_parser = Parser()
                             target_sub_comsdk_graph = target_sub_parser.parse_file(temp_target_subgraph_path)
 
-                            target_subgraph_obj = process_graph_recursively(
-                                parser=target_sub_parser,
-                                comsdk_graph=target_sub_comsdk_graph,
-                                dot_path=temp_target_subgraph_path,
-                                temp_dir=temp_dir,
-                                processed_graphs=processed_graphs,
-                                parent_graph=graph
-                            )
+                            # Получаем имя подграфа
+                            target_subgraph_name = target_sub_parser.fact.name
+
+                            # Проверяем, существует ли подграф в базе данных
+                            existing_target_subgraph = Graph.objects.filter(
+                                name=target_subgraph_name,
+                                is_subgraph=True
+                            ).first()
+
+                            if existing_target_subgraph:
+                                print(
+                                    f"Используем существующий подграф: {existing_target_subgraph.name} (ID: {existing_target_subgraph.id})")
+                                target_subgraph_obj = existing_target_subgraph
+                            else:
+                                target_subgraph_obj = process_graph_recursively(
+                                    parser=target_sub_parser,
+                                    comsdk_graph=target_sub_comsdk_graph,
+                                    dot_path=temp_target_subgraph_path,
+                                    temp_dir=temp_dir,
+                                    processed_graphs=processed_graphs,
+                                    parent_graph=graph
+                                )
                         except Exception as e:
                             print(f"Ошибка обработки подграфа цели: {str(e)}")
                     else:
