@@ -17,6 +17,7 @@ class State(models.Model):
     subgraph = models.ForeignKey(Graph, null=True, blank=True, on_delete=models.SET_NULL, related_name='parent_states')
     comment = models.TextField(blank=True)
     array_keys_mapping = models.JSONField(blank=True, null=True)
+    is_subgraph_node = models.BooleanField(default=False)
 
     def __str__(self):
         return f"{self.name} ({self.graph})"

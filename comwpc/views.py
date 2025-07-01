@@ -182,27 +182,34 @@ def import_dot(request):
             try:
                 # Создаем временную директорию
                 temp_dir = tempfile.mkdtemp()
-                temp_path = os.path.join(temp_dir, dot_file.name)
+                main_temp_path = os.path.join(temp_dir, dot_file.name)
 
-                # Сохраняем файл
-                with open(temp_path, 'wb+') as destination:
+                # Сохраняем основной файл
+                with open(main_temp_path, 'wb+') as destination:
                     for chunk in dot_file.chunks():
                         destination.write(chunk)
 
-                # Парсим файл
+                # Парсим основной файл
                 parser = Parser()
-                comsdk_graph = parser.parse_file(temp_path)
+                comsdk_graph = parser.parse_file(main_temp_path)
 
-                # Преобразуем в Django-модель
-                django_graph = convert_comsdk_to_django(parser, comsdk_graph, temp_path)
+                # Обрабатываем граф рекурсивно
+                processed_graphs = {}  # Кеш для уже обработанных графов
+                django_graph = process_graph_recursively(
+                    parser=parser,
+                    comsdk_graph=comsdk_graph,
+                    dot_path=main_temp_path,
+                    temp_dir=temp_dir,
+                    processed_graphs=processed_graphs,
+                    parent_graph=None
+                )
 
-                messages.success(request, 'Граф успешно импортирован!')
+                messages.success(request, 'Граф и подграфы успешно импортированы!')
                 return redirect('admin:comwpc_graph_change', django_graph.id)
 
             except Exception as e:
                 messages.error(request, f'Ошибка импорта: {str(e)}')
             finally:
-                # Удаляем временную директорию
                 if os.path.exists(temp_dir):
                     shutil.rmtree(temp_dir)
     else:
@@ -211,87 +218,161 @@ def import_dot(request):
     return render(request, 'admin/import_dot.html', {'form': form})
 
 
-def convert_comsdk_to_django(parser, comsdk_graph, dot_path=None):
-    # Создаем объект Graph
+def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processed_graphs, parent_graph=None):
+    """Рекурсивно обрабатывает граф и его подграфы с использованием parser.fact.entities"""
+    if dot_path in processed_graphs:
+        return processed_graphs[dot_path]
+
+    print(f"Обработка графа: {dot_path}")
+
     with open(dot_path, 'r', encoding='utf-8') as f:
         dot_content = f.read()
 
-    # Создаем объект Graph
     graph = Graph.objects.create(
         name=parser.fact.name,
-        raw_dot=dot_content
+        raw_dot=dot_content,
+        is_subgraph=parent_graph is not None,
+        parent_graph=parent_graph
     )
+    processed_graphs[dot_path] = graph
+    print(f"Создан граф: {graph.name} (ID: {graph.id}), is_subgraph={parent_graph is not None}")
 
-    # Словарь для сопоставления состояний
+    # Получаем все сущности графа
+    entities = getattr(parser.fact, 'entities', {})
+    print(f"Entities in graph: {list(entities.keys())}")
+
     state_mapping = {}
     queue = deque([comsdk_graph.init_state])
     visited = set()
-
-    print(f'queue={queue}')
 
     while queue:
         current = queue.popleft()
         if current.name in visited:
             continue
-        print(f'current={current}')
         visited.add(current.name)
-        #todo
-        # Делал для обработки подграфов, не сработало
-        #subgraph = None
-        #if hasattr(current, 'subgraph') and current.subgraph:
-        #    # Создаем или получаем подграф
-        #    subgraph, _ = Graph.objects.get_or_create(
-        #        name=current.subgraph.init_state.name,
-        #        defaults={
-        #            'raw_dot': current.subgraph.raw_dot if hasattr(current.subgraph, 'raw_dot') else '',
-        #            'is_subgraph': True,
-        #            'parent_graph': graph
-        #        }
-        #    )
+        print(f"Обработка состояния: {current.name}")
 
-        # Создаем Django State
+        # Ищем информацию о состоянии в entities
+        state_entity = entities.get(current.name)
+        subgraph_path = None
+
+        # Если нашли сущность для этого состояния и у нее есть subgraph
+        if state_entity and hasattr(state_entity, 'subgraph'):
+            subgraph_path = state_entity.subgraph
+            print(f"Найден подграф для состояния {current.name}: {subgraph_path}")
+
+        # Обработка подграфа
+        subgraph_obj = None
+        if subgraph_path:
+            # Обрабатываем относительные пути
+            if not os.path.isabs(subgraph_path):
+                base_dir = os.path.dirname(dot_path)
+                subgraph_path = os.path.join(base_dir, subgraph_path)
+
+            # Формируем путь во временной директории
+            subgraph_filename = os.path.basename(subgraph_path)
+            temp_subgraph_path = os.path.join(temp_dir, subgraph_filename)
+
+            # Копируем файл подграфа, если его нет
+            if not os.path.exists(temp_subgraph_path) and os.path.exists(subgraph_path):
+                shutil.copy2(subgraph_path, temp_subgraph_path)
+
+            if os.path.exists(temp_subgraph_path):
+                try:
+                    print(f"Обработка подграфа: {temp_subgraph_path}")
+                    # Парсим подграф
+                    sub_parser = Parser()
+                    sub_comsdk_graph = sub_parser.parse_file(temp_subgraph_path)
+
+                    # Рекурсивно обрабатываем подграф
+                    subgraph_obj = process_graph_recursively(
+                        parser=sub_parser,
+                        comsdk_graph=sub_comsdk_graph,
+                        dot_path=temp_subgraph_path,
+                        temp_dir=temp_dir,
+                        processed_graphs=processed_graphs,
+                        parent_graph=graph
+                    )
+                    print(f"Создан подграф: {subgraph_obj.name} (ID: {subgraph_obj.id})")
+                except Exception as e:
+                    print(f"Ошибка обработки подграфа: {str(e)}")
+            else:
+                print(f"Файл подграфа не найден: {temp_subgraph_path}")
+
+        # Создаем состояние
         if current.name not in state_mapping:
             django_state = State.objects.create(
                 name=current.name,
                 graph=graph,
                 is_terminal=current.is_term_state,
-                array_keys_mapping=current.array_keys_mapping
+                subgraph=subgraph_obj,
+                array_keys_mapping=current.array_keys_mapping,
+                is_subgraph_node=subgraph_obj is not None
             )
             state_mapping[current.name] = django_state
         else:
             django_state = state_mapping[current.name]
+        print(f"Создано состояние: {django_state.name} (ID: {django_state.id}), subgraph={subgraph_obj is not None}")
 
-        # Обрабатываем переходы
-        print(f'current.transfers={current.transfers}')
-        for transfer in current.transfers:
-            print(f'transfer={transfer}')
+        # Обработка переходов
+        for transfer in getattr(current, 'transfers', []):
             target = transfer.output_state
             target_name = target.name
-            print(state_mapping)
-            # Создаем целевое состояние если нужно
-            print(f'target_name={target_name}')
+
             if target_name not in state_mapping:
-                #todo
-                # Делал для обработки подграфов, не сработало
-                #target_subgraph = None
-                #if hasattr(target, 'subgraph') and target.subgraph:
-                #    target_subgraph, _ = Graph.objects.get_or_create(
-                #        name=target.subgraph.init_state.name,
-                #        defaults={
-                #            'raw_dot': target.subgraph.raw_dot if hasattr(target.subgraph, 'raw_dot') else '',
-                #            'is_subgraph': True,
-                #            'parent_graph': graph
-                #        }
-                #    )
-                state_mapping[target_name] = State.objects.create(
+                # Ищем информацию о целевом состоянии в entities
+                target_entity = entities.get(target.name)
+                target_subgraph_path = None
+
+                if target_entity and hasattr(target_entity, 'subgraph'):
+                    target_subgraph_path = target_entity.subgraph
+                    print(f"Найден подграф для целевого состояния {target.name}: {target_subgraph_path}")
+
+                target_subgraph_obj = None
+                if target_subgraph_path:
+                    if not os.path.isabs(target_subgraph_path):
+                        base_dir = os.path.dirname(dot_path)
+                        target_subgraph_path = os.path.join(base_dir, target_subgraph_path)
+
+                    target_subgraph_filename = os.path.basename(target_subgraph_path)
+                    temp_target_subgraph_path = os.path.join(temp_dir, target_subgraph_filename)
+
+                    # Копируем файл подграфа, если его нет
+                    if not os.path.exists(temp_target_subgraph_path) and os.path.exists(target_subgraph_path):
+                        shutil.copy2(target_subgraph_path, temp_target_subgraph_path)
+
+                    if os.path.exists(temp_target_subgraph_path):
+                        try:
+                            target_sub_parser = Parser()
+                            target_sub_comsdk_graph = target_sub_parser.parse_file(temp_target_subgraph_path)
+
+                            target_subgraph_obj = process_graph_recursively(
+                                parser=target_sub_parser,
+                                comsdk_graph=target_sub_comsdk_graph,
+                                dot_path=temp_target_subgraph_path,
+                                temp_dir=temp_dir,
+                                processed_graphs=processed_graphs,
+                                parent_graph=graph
+                            )
+                        except Exception as e:
+                            print(f"Ошибка обработки подграфа цели: {str(e)}")
+                    else:
+                        print(f"Файл подграфа цели не найден: {temp_target_subgraph_path}")
+
+                # Создаем целевое состояние
+                target_state = State.objects.create(
                     name=target_name,
                     graph=graph,
                     is_terminal=target.is_term_state,
-                    array_keys_mapping=target.array_keys_mapping
+                    subgraph=target_subgraph_obj,
+                    array_keys_mapping=target.array_keys_mapping,
+                    is_subgraph_node=target_subgraph_obj is not None
                 )
+                state_mapping[target_name] = target_state
                 queue.append(target)
+                print(f"Создано целевое состояние: {target_state.name} (ID: {target_state.id})")
 
-            # Создаем Edge
+            # Создаем Edge и Transfer
             edge = Edge.objects.create(
                 comment=transfer.edge.comment or "",
                 pred_module=transfer.edge.pred_f.module or "",
@@ -300,13 +381,13 @@ def convert_comsdk_to_django(parser, comsdk_graph, dot_path=None):
                 morph_func=transfer.edge.morph_f.name or ""
             )
 
-            # Создаем Transfer
-            Transfer.objects.create(
+            transfer_obj = Transfer.objects.create(
                 source=django_state,
                 edge=edge,
                 target=state_mapping[target_name],
                 graph=graph,
                 order=transfer.edge.order
             )
+            print(f"Создан переход: {edge.comment} (ID: {transfer_obj.id})")
 
     return graph
