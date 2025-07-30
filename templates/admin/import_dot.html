@@ -1,17 +1,611 @@
 {% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrahead %}
+{{ block.super }}
+<link href="https://cdn.jsdelivr.net/npm/@mui/material@5.11.15/dist/material-ui.min.css" rel="stylesheet">
+<style>
+    .import-container {
+        max-width: 800px;
+        margin: 40px auto;
+        padding: 30px;
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    }
+
+    .progress-container {
+        margin-top: 30px;
+        padding: 20px;
+        border: 1px solid #e0e0e0;
+        border-radius: 12px;
+        background: #fafafa;
+    }
+
+    .log-container {
+        margin-top: 20px;
+        max-height: 300px;
+        overflow-y: auto;
+        padding: 15px;
+        background: #1e1e1e;
+        color: #d4d4d4;
+        border-radius: 8px;
+        font-family: monospace;
+    }
+
+    .log-entry {
+        margin-bottom: 8px;
+        font-size: 14px;
+    }
+
+    .success-log { color: #4caf50; }
+    .error-log { color: #f44336; }
+    .info-log { color: #2196f3; }
+
+    .import-visualization {
+        margin-top: 30px;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 20px;
+    }
+
+    .graph-card {
+        padding: 15px;
+        border: 1px solid #e0e0e0;
+        border-radius: 12px;
+        background: #fff;
+        transition: all 0.3s ease;
+    }
+
+    .graph-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 6px 15px rgba(0,0,0,0.1);
+    }
+
+    .graph-name {
+        font-weight: 500;
+        margin-bottom: 10px;
+        color: #1976d2;
+    }
+
+    .graph-status {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 500;
+        margin-bottom: 10px;
+    }
+
+    .status-processing { background: #bbdefb; color: #0d47a1; }
+    .status-completed { background: #c8e6c9; color: #2e7d32; }
+    .status-error { background: #ffcdd2; color: #c62828; }
+
+    /* Стили для drag-and-drop */
+    .drop-zone {
+        border: 2px dashed #1976d2;
+        border-radius: 12px;
+        padding: 40px 20px;
+        text-align: center;
+        background-color: #f5f9ff;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        margin-bottom: 20px;
+    }
+
+    .drop-zone:hover, .drop-zone.dragover {
+        background-color: #e3f2fd;
+        border-color: #0d47a1;
+    }
+
+    .drop-zone .icon {
+        font-size: 48px;
+        color: #1976d2;
+        margin-bottom: 15px;
+    }
+
+    .drop-zone .hint {
+        font-size: 14px;
+        color: #666;
+        margin: 10px 0 15px;
+    }
+
+    .file-input-wrapper {
+        position: relative;
+        overflow: hidden;
+        display: inline-block;
+    }
+
+    .file-input-wrapper input[type=file] {
+        position: absolute;
+        left: 0;
+        top: 0;
+        opacity: 0;
+        width: 100%;
+        height: 100%;
+        cursor: pointer;
+    }
+
+    .mui-button-contained {
+        background-color: #1976d2;
+        color: white;
+        padding: 10px 20px;
+        border-radius: 4px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        border: none;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        transition: background-color 0.3s;
+    }
+
+    .mui-button-contained:hover {
+        background-color: #1565c0;
+    }
+
+    .file-info {
+        margin-top: 15px;
+        padding: 10px;
+        background: #e3f2fd;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .file-info .icon {
+        color: #1976d2;
+        font-size: 24px;
+    }
+
+    .file-details {
+        flex-grow: 1;
+    }
+
+    .file-name {
+        font-weight: 500;
+    }
+
+    .file-size {
+        font-size: 12px;
+        color: #666;
+    }
+
+    .remove-file {
+        color: #f44336;
+        cursor: pointer;
+    }
+
+    .graph-stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin-top: 10px;
+    }
+
+    .stat-item {
+        text-align: center;
+        padding: 8px;
+        background: #f5f7fa;
+        border-radius: 8px;
+    }
+
+    .stat-value {
+        font-weight: bold;
+        font-size: 18px;
+        color: #1976d2;
+    }
+
+    .stat-label {
+        font-size: 12px;
+        color: #666;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 10px;
+        margin-top: 20px;
+        justify-content: center;
+    }
+
+    .view-graph-btn {
+        background-color: #4caf50;
+    }
+
+    .view-graph-btn:hover {
+        background-color: #388e3c;
+    }
+
+    .loading-indicator {
+        text-align: center;
+        margin: 20px 0;
+    }
+
+    .spinner {
+        border: 4px solid rgba(0, 0, 0, 0.1);
+        border-left-color: #1976d2;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 10px;
+    }
+
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<div id="content-main">
-    <h1>Import Graph from aDOT File</h1>
-    <form method="post" enctype="multipart/form-data">
-        {% csrf_token %}
-        <div class="form-row">
-            {{ form.dot_file.label_tag }}
-            {{ form.dot_file }}
+<div class="import-container">
+    <h1 style="text-align: center; margin-bottom: 30px;">Импорт графа из aDOT</h1>
+
+    <div id="upload-tab">
+        <form id="import-form" method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+
+            <!-- Область для перетаскивания файла -->
+            <div class="drop-zone" id="drop-zone">
+                <div class="icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="#1976d2">
+                        <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/>
+                    </svg>
+                </div>
+                <h3>Перетащите .adot файл сюда</h3>
+                <p class="hint">или</p>
+
+                <div class="file-input-wrapper">
+                    <button type="button" class="mui-button-contained">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="white" style="margin-right: 8px;">
+                            <path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/>
+                        </svg>
+                        Выберите файл
+                    </button>
+                    <input type="file" id="dot-file" name="dot_file" accept=".adot">
+                </div>
+            </div>
+
+            <!-- Информация о выбранном файле -->
+            <div id="file-info" class="file-info" style="display: none;">
+                <div class="icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="#1976d2">
+                        <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+                    </svg>
+                </div>
+                <div class="file-details">
+                    <div class="file-name" id="file-name-display"></div>
+                    <div class="file-size" id="file-size-display"></div>
+                </div>
+                <div class="remove-file" id="remove-file">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="#f44336">
+                        <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+                    </svg>
+                </div>
+            </div>
+
+            <div class="action-buttons">
+                <button type="submit" class="mui-button-contained" id="submit-btn" disabled style="background-color: #1976d2;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="white" style="margin-right: 8px;">
+                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                    </svg>
+                    Начать импорт
+                </button>
+                <button type="button" class="mui-button-contained" style="background-color: #9e9e9e;" onclick="window.history.back()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="white" style="margin-right: 8px;">
+                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                    </svg>
+                    Отмена
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <div id="progress-tab" style="display:none;">
+        <div class="progress-container">
+            <div class="loading-indicator" id="loading-indicator">
+                <div class="spinner"></div>
+                <div>Идет обработка файла...</div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h3 style="margin: 0;">Прогресс импорта</h3>
+                <div id="progress-text" style="font-weight: bold; font-size: 18px;">0%</div>
+            </div>
+
+            <div class="mui-progress">
+                <div id="import-progress" class="mui-progress-bar" style="width: 0%; height: 10px; border-radius: 5px; background-color: #1976d2;"></div>
+            </div>
+            <div id="progress-detail" style="margin-top: 8px; color: #666; font-size: 14px;">Подготовка к импорту...</div>
+
+            <div class="log-container">
+                <div id="log-content">
+                    <!-- Логи будут добавляться здесь -->
+                </div>
+            </div>
         </div>
-        <div class="submit-row">
-            <input type="submit" value="Import" class="default">
+
+        <div id="import-visualization" class="import-visualization">
+            <!-- Визуализация импортируемых графов -->
         </div>
-    </form>
+
+        <div id="completed-section" style="display: none; margin-top: 30px; text-align: center;">
+            <div style="font-size: 18px; color: #4caf50; margin-bottom: 20px;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="#4caf50" style="vertical-align: middle; margin-right: 10px;">
+                    <path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/>
+                </svg>
+                <span>Импорт успешно завершен!</span>
+            </div>
+            <div class="action-buttons">
+                <button id="view-graph-btn" class="mui-button-contained view-graph-btn">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="white" style="margin-right: 8px;">
+                        <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+                    </svg>
+                    Перейти к графу
+                </button>
+                <button type="button" class="mui-button-contained" style="background-color: #9e9e9e;" onclick="location.reload()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="white" style="margin-right: 8px;">
+                        <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+                    </svg>
+                    Импортировать еще
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Элементы DOM
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('dot-file');
+    const fileNameDisplay = document.getElementById('file-name-display');
+    const fileSizeDisplay = document.getElementById('file-size-display');
+    const fileInfo = document.getElementById('file-info');
+    const removeFileBtn = document.getElementById('remove-file');
+    const submitBtn = document.getElementById('submit-btn');
+    const completedSection = document.getElementById('completed-section');
+    const viewGraphBtn = document.getElementById('view-graph-btn');
+    const progressTab = document.getElementById('progress-tab');
+    const uploadTab = document.getElementById('upload-tab');
+    const loadingIndicator = document.getElementById('loading-indicator');
+    const logContent = document.getElementById('log-content');
+
+    // Обработчики drag-and-drop
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, preventDefaults, false);
+    });
+
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, highlight, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, unhighlight, false);
+    });
+
+    function highlight() {
+        dropZone.classList.add('dragover');
+    }
+
+    function unhighlight() {
+        dropZone.classList.remove('dragover');
+    }
+
+    dropZone.addEventListener('drop', handleDrop, false);
+
+    function handleDrop(e) {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+
+        if (files.length) {
+            handleFiles(files[0]);
+        }
+    }
+
+    // Обработчик выбора файла через кнопку
+    fileInput.addEventListener('change', function() {
+        if (this.files.length) {
+            handleFiles(this.files[0]);
+        }
+    });
+
+    // Обработчик удаления файла
+    removeFileBtn.addEventListener('click', function() {
+        fileInput.value = '';
+        fileInfo.style.display = 'none';
+        submitBtn.disabled = true;
+    });
+
+    // Функция обработки выбранного файла
+    function handleFiles(file) {
+        // Проверяем расширение файла
+        if (!file.name.toLowerCase().endsWith('.adot')) {
+            alert('Пожалуйста, выберите файл с расширением .adot');
+            return;
+        }
+
+        // Проверяем размер файла (макс. 10 МБ)
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        if (file.size > maxSize) {
+            alert('Файл слишком большой. Максимальный размер: 10 МБ');
+            return;
+        }
+
+        // Отображаем информацию о файле
+        fileNameDisplay.textContent = file.name;
+        fileSizeDisplay.textContent = formatFileSize(file.size);
+        fileInfo.style.display = 'flex';
+        submitBtn.disabled = false;
+
+        // Создаем объект FileList для формы
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(file);
+        fileInput.files = dataTransfer.files;
+    }
+
+    // Форматирование размера файла
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    // Обработчик отправки формы
+    const form = document.getElementById('import-form');
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        // Сбрасываем предыдущие результаты
+        completedSection.style.display = 'none';
+        logContent.innerHTML = '';
+
+        // Показываем вкладку прогресса
+        progressTab.style.display = 'block';
+        uploadTab.style.display = 'none';
+        loadingIndicator.style.display = 'block';
+
+        const formData = new FormData(form);
+
+        // Создаем визуализацию
+        createVisualization();
+
+        // Обновляем статус на "Начало обработки"
+        const statusElement = document.querySelector('.graph-status');
+        if (statusElement) {
+            statusElement.textContent = 'Обработка...';
+            statusElement.className = 'graph-status status-processing';
+        }
+
+        // Добавляем лог о начале импорта
+        addLog('Начало импорта графа...', 'info');
+
+        // Отправляем запрос
+        fetch("{% url 'admin:import_dot' %}", {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => {
+            loadingIndicator.style.display = 'none';
+
+            if (!response.ok) {
+                throw new Error('Ошибка сервера: ' + response.status);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                addLog('Импорт успешно завершен!', 'success');
+                updateProgress(100, 'Завершено');
+
+                // Обновляем статистику в карточке
+                if (data.stats) {
+                    updateGraphStats(data.stats);
+                }
+
+                // Показываем секцию завершения
+                completedSection.style.display = 'block';
+
+                // Устанавливаем обработчик для кнопки просмотра
+                viewGraphBtn.onclick = function() {
+                    window.location.href = data.redirect_url;
+                };
+            } else {
+                addLog(`Ошибка импорта: ${data.error || 'Неизвестная ошибка'}`, 'error');
+                updateProgress(0, 'Ошибка импорта');
+
+                // Обновляем статус карточки
+                if (statusElement) {
+                    statusElement.textContent = 'Ошибка';
+                    statusElement.className = 'graph-status status-error';
+                }
+            }
+        })
+        .catch(error => {
+            loadingIndicator.style.display = 'none';
+            addLog(`Ошибка сети: ${error.message}`, 'error');
+            updateProgress(0, 'Критическая ошибка');
+
+            // Обновляем статус карточки
+            if (statusElement) {
+                statusElement.textContent = 'Ошибка';
+                statusElement.className = 'graph-status status-error';
+            }
+        });
+    });
+
+    // Функции для работы с прогрессом
+    function updateProgress(percent, message) {
+        const progressBar = document.getElementById('import-progress');
+        const progressText = document.getElementById('progress-text');
+        const progressDetail = document.getElementById('progress-detail');
+
+        progressBar.style.width = `${percent}%`;
+        progressText.textContent = `${percent}%`;
+        progressDetail.textContent = message;
+    }
+
+    function addLog(message, type = 'info') {
+        const logEntry = document.createElement('div');
+        logEntry.className = `log-entry ${type}-log`;
+        logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        logContent.appendChild(logEntry);
+        logContent.scrollTop = logContent.scrollHeight;
+    }
+
+    // Функция обновления статистики графа
+    function updateGraphStats(stats) {
+        if (stats) {
+            document.getElementById('main-states').textContent = stats.states || 0;
+            document.getElementById('main-edges').textContent = stats.edges || 0;
+            document.getElementById('main-subgraphs').textContent = stats.subgraphs || 0;
+
+            // Обновляем статус карточки
+            const statusElement = document.querySelector('.graph-status');
+            if (statusElement) {
+                statusElement.textContent = 'Завершено';
+                statusElement.className = 'graph-status status-completed';
+            }
+        }
+    }
+
+    // Инициализация визуализации
+    function createVisualization() {
+        const container = document.getElementById('import-visualization');
+        container.innerHTML = `
+            <div class="graph-card">
+                <div class="graph-name">Основной граф</div>
+                <div class="graph-status status-processing">Обработка...</div>
+                <div class="graph-stats">
+                    <div class="stat-item">
+                        <div class="stat-value" id="main-states">0</div>
+                        <div class="stat-label">Состояния</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="main-edges">0</div>
+                        <div class="stat-label">Переходы</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="main-subgraphs">0</div>
+                        <div class="stat-label">Подграфы</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+});
+</script>
 {% endblock %}
