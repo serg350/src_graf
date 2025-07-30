@@ -1,0 +1,14 @@
+{% extends "admin/change_list.html" %}
+
+{% block object-tools %}
+    <div class="object-tools">
+        {% block object-tools-items %}
+            {{ block.super }}
+            <li>
+                <a href="{{ import_dot_url }}" class="addlink" style="margin-left: 15px;">
+                    Import from aDOT
+                </a>
+            </li>
+        {% endblock %}
+    </div>
+{% endblock %}
