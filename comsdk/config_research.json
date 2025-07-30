@@ -1,0 +1,44 @@
+{
+    "LOCAL_HOST": {
+        "research_roots": "...",
+        "custom_programs": {
+            "@path_to_binaries@": ["@bin1@", "@bin2@", ...],
+            ...
+        }
+        "custom_commands": {
+            "@command_name@": "@command itself@"
+        },
+    },
+    "REMOTE_HOSTS": {
+        "@remote_host_sid@": {
+            "ssh_host": "...",
+            "max_cores": ...,
+            "username": "...",
+            "password": "...",
+            "pkey": "...",
+            "research_path": "...",
+            "env_programs": ["@bin1@", "@bin1@", ...],
+            "custom_programs": {
+                "@path_to_binaries@": ["@bin1@", "@bin2@", ...],
+                ...
+            },
+            "custom_commands": {
+                "@command_name@": "@command itself@"
+            },
+            "sge_template_name": "...",
+            "job_setter": "...",
+            "job_finished_checker": "..."
+       },
+        ...
+    },
+    "RESEARCH": {
+        "@research_sid@": "@research_full_name@",
+        ...
+    },
+    "RESEARCH_PROPS": {
+        ...
+    },
+    "PERSONAL_TASK_SHIFT": 0,
+    "TEMPLATES_PATH": "...",
+    "MEETINGS_PATH": "..."
+}
