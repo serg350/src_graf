@@ -6,6 +6,7 @@ from comwpc import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('import-progress/', views.import_progress, name='import_progress'),
     path('admin/comwpc/graph/import-dot/',
          views.import_dot,
          name='comwpc_import_dot'

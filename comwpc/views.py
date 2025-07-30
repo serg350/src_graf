@@ -1,4 +1,5 @@
 import shutil
+import time
 
 from django.core.exceptions import PermissionDenied
 from django.shortcuts import render, get_object_or_404
@@ -7,7 +8,7 @@ from django.utils.safestring import mark_safe
 
 from comwpc.models import Graph
 import graphviz
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 
 from django.contrib.auth.decorators import login_required
 
@@ -179,43 +180,80 @@ def import_dot(request):
         if form.is_valid():
             dot_file = request.FILES['dot_file']
 
-            try:
-                # Создаем временную директорию
-                temp_dir = tempfile.mkdtemp()
-                main_temp_path = os.path.join(temp_dir, dot_file.name)
+            # Для AJAX-запросов возвращаем JSON
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                try:
+                    temp_dir = tempfile.mkdtemp()
+                    main_temp_path = os.path.join(temp_dir, dot_file.name)
 
-                # Сохраняем основной файл
-                with open(main_temp_path, 'wb+') as destination:
-                    for chunk in dot_file.chunks():
-                        destination.write(chunk)
+                    # Сохраняем основной файл
+                    with open(main_temp_path, 'wb+') as destination:
+                        for chunk in dot_file.chunks():
+                            destination.write(chunk)
 
-                # Парсим основной файл
-                parser = Parser()
-                comsdk_graph = parser.parse_file(main_temp_path)
+                    # Парсим основной файл
+                    parser = Parser()
+                    comsdk_graph = parser.parse_file(main_temp_path)
 
-                # Обрабатываем граф рекурсивно
-                processed_graphs = {}  # Кеш для уже обработанных графов
-                django_graph = process_graph_recursively(
-                    parser=parser,
-                    comsdk_graph=comsdk_graph,
-                    dot_path=main_temp_path,
-                    temp_dir=temp_dir,
-                    processed_graphs=processed_graphs,
-                    parent_graph=None
-                )
+                    # Обрабатываем граф рекурсивно
+                    processed_graphs = {}  # Кеш для уже обработанных графов
+                    django_graph = process_graph_recursively(
+                        parser=parser,
+                        comsdk_graph=comsdk_graph,
+                        dot_path=main_temp_path,
+                        temp_dir=temp_dir,
+                        processed_graphs=processed_graphs,
+                        parent_graph=None
+                    )
+                    stats = {
+                        'states': django_graph.state_set.count(),
+                        'edges': Edge.objects.filter(transfer__graph=django_graph).count(),
+                        'subgraphs': Graph.objects.filter(parent_graph=django_graph).count()
+                    }
 
-                messages.success(request, 'Граф и подграфы успешно импортированы!')
-                return redirect('admin:comwpc_graph_change', django_graph.id)
+                    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                        return JsonResponse({
+                            'success': True,
+                            'redirect_url': reverse('admin:comwpc_graph_change', args=[django_graph.id]),
+                            'stats': stats
+                        })
+                    else:
+                        messages.success(request, 'Импорт завершен!')
+                        return redirect('admin:comwpc_graph_change', django_graph.id)
 
-            except Exception as e:
-                messages.error(request, f'Ошибка импорта: {str(e)}')
-            finally:
-                if os.path.exists(temp_dir):
-                    shutil.rmtree(temp_dir)
-    else:
-        form = DotImportForm()
+                except Exception as e:
+                    return JsonResponse({
+                        'success': False,
+                        'error': str(e)
+                    })
+            else:
+                # Обработка для обычных запросов
+                try:
+                    form = DotImportForm()
+                except Exception as e:
+                    messages.error(request, f'Ошибка импорта: {str(e)}')
+        else:
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Неверный формат файла'
+                })
 
+    # Для GET-запросов
+    form = DotImportForm()
     return render(request, 'admin/import_dot.html', {'form': form})
+
+
+def import_progress(request):
+    def event_stream():
+        # Эмуляция прогресса
+        for i in range(1, 101):
+            time.sleep(0.5)
+            yield f"data: {{\"progress\": {i}, \"message\": \"Обработано {i}%\"}}\n\n"
+
+    response = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+    response['Cache-Control'] = 'no-cache'
+    return response
 
 
 def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processed_graphs, parent_graph=None):
