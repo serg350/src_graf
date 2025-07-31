@@ -17,4 +17,7 @@ urlpatterns = [
     path('graph-visualization/<int:graph_id>/content/',
          views.graph_interactive_content,
          name='graph_content'),
+    path('graph/<int:graph_id>/start/', views.start_execution, name='start-execution'),
+    path('execution/events/<str:session_id>/', views.execution_events, name='execution-events'),
+    path('graph/<int:graph_id>/visualize/', views.graph_interactive_view, name='graph-visualization'),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

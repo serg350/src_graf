@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -40,6 +41,34 @@ INSTALLED_APPS = [
     #'django_extensions',
     'comwpc',
 ]
+
+# Настройки Redis
+REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+EVENT_REDIS_URL = os.environ.get('EVENT_SERVICE_URL', 'redis://localhost:6379/1')
+
+# Парсинг URL Redis
+redis_conn = urlparse(REDIS_URL)
+event_redis_conn = urlparse(EVENT_REDIS_URL)
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": REDIS_URL,
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        }
+    }
+}
+
+# Конфигурация для сервиса событий
+EVENT_REDIS_CONFIG = {
+    'host': event_redis_conn.hostname,
+    'port': event_redis_conn.port,
+    'db': int(event_redis_conn.path.lstrip('/')) if event_redis_conn.path else 0,
+    'password': event_redis_conn.password,
+    'socket_timeout': 5,
+    'socket_connect_timeout': 5,
+}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',

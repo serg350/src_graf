@@ -1,3 +1,5 @@
+import json
+import queue
 import shutil
 import time
 
@@ -15,35 +17,36 @@ from django.contrib.auth.decorators import login_required
 @login_required
 def graph_interactive_view(request, graph_id):
     graph = get_object_or_404(Graph, pk=graph_id)
+    session_id = request.GET.get('session')
 
     dot = graphviz.Digraph()
     dot.attr('node', shape='box')
     dot.attr(rankdir='LR')
 
-    # Добавляем состояния
+    # Добавляем состояния с атрибутом data-name
     for state in graph.state_set.all():
+        attrs = {
+            'data-name': state.name,
+            'data-id': str(state.id)
+        }
+
         if state.subgraph:
-            dot.node(
-                str(state.id),
-                label=state.name,
-                shape='folder',
-                color='orange',
-                style='filled',
-                fillcolor='moccasin',
-                URL=f"javascript:openSubgraph({state.subgraph.id})"  # JavaScript для открытия модального окна
-            )
+            attrs.update({
+                'shape': 'folder',
+                'color': 'orange',
+                'style': 'filled',
+                'fillcolor': 'moccasin',
+                'URL': f"javascript:openSubgraph({state.subgraph.id})"
+            })
         else:
             color = 'green' if state.is_terminal else 'blue'
-            dot.node(
-                str(state.id),
-                label=state.name,
-                color=color,
-                style='filled' if state.is_terminal else '',
-                fillcolor='lightgreen' if state.is_terminal else 'lightblue'
-            )
+            attrs.update({
+                'color': color,
+                'style': 'filled' if state.is_terminal else '',
+                'fillcolor': 'lightgreen' if state.is_terminal else 'lightblue'
+            })
 
-    # Остальной код без изменений...
-
+        dot.node(str(state.id), label=state.name, **{'attributes': json.dumps(attrs)})
     # Добавляем переходы
     for transfer in graph.transfer_set.all():
         dot.edge(
@@ -107,6 +110,7 @@ def graph_interactive_view(request, graph_id):
 
     return render(request, 'comwpc/graph_interactive.html', {
         'graph': graph,
+        'execution_session': session_id,
         'svg_content': mark_safe(svg_str + zoom_script)
     })
 
@@ -466,3 +470,85 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
             print(f"Создан переход: {edge.comment} (ID: {transfer_obj.id})")
 
     return graph
+
+
+from .events import get_event_service
+from django.http import JsonResponse
+import uuid
+import threading
+
+event_service = get_event_service()
+
+
+def start_execution(request, graph_id):
+    graph = get_object_or_404(Graph, pk=graph_id)
+    session_id = str(uuid.uuid4())
+
+    # Создаем временный файл для парсера
+    with tempfile.NamedTemporaryFile(mode='w+', suffix='.adot') as tmp:
+        tmp.write(graph.raw_dot)
+        tmp.seek(0)
+
+        parser = Parser()
+        comsdk_graph = parser.parse_file(tmp.name)
+
+        # Добавляем слушателя событий
+        def event_listener(event):
+            event['session_id'] = session_id
+            event_service.publish(session_id, event)
+            event_service.notify_local(event)
+
+        comsdk_graph.add_listener(event_listener)
+
+        # Запускаем выполнение в отдельном потоке
+        initial_data = json.loads(request.POST.get('data', '{}'))
+        thread = threading.Thread(
+            target=comsdk_graph.run,
+            args=(initial_data,),
+            daemon=True
+        )
+        thread.start()
+
+        return JsonResponse({
+            'session_id': session_id,
+            'status': 'started'
+        })
+
+
+def execution_events(request, session_id):
+    def event_generator():
+        try:
+            for event in event_stream(session_id):
+                yield event
+        except GeneratorExit:
+            # Клиент отключился
+            pass
+
+    response = StreamingHttpResponse(event_generator(), content_type='text/event-stream')
+    response['Cache-Control'] = 'no-cache'
+    response['Connection'] = 'keep-alive'
+    return response
+
+def event_stream(session_id):
+    # Создаем очередь для получения событий
+    event_queue = queue.Queue()
+    # Колбэк, который будет помещать события в очередь
+    def event_handler(event):
+        event_queue.put(event)
+    # Подписываемся на события
+    event_service.subscribe(session_id, event_handler)
+    try:
+        while True:
+            try:
+                # Ждем событие с таймаутом для проверки прерывания
+                event = event_queue.get(timeout=5)
+                yield f"data: {json.dumps(event)}\n\n"
+            except queue.Empty:
+                # Проверяем, нужно ли завершить поток
+                if threading.current_thread().stopped:
+                    break
+                # Отправляем keep-alive комментарий
+                yield ":keep-alive\n\n"
+    finally:
+        # Отписываемся при завершении
+        event_service.unsubscribe(session_id, event_handler)

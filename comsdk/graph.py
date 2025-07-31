@@ -1,5 +1,6 @@
 import collections
 import os
+import time
 from enum import Enum, auto
 from functools import partial
 import importlib as imp
@@ -90,6 +91,9 @@ class Graph:
         self.term_state = term_state
         if self.term_state is not None:
             self.term_state.is_term_state = True
+        self.current_state = None
+        self.execution_path = []
+        self.listeners = []
         self._initialized = False
 
     def __repr__(self):
@@ -100,6 +104,18 @@ class Graph:
             f"  initialized={self._initialized}\n"
             f")"
         )
+
+    def add_listener(self, listener):
+        self.listeners.append(listener)
+
+    def _notify_listeners(self, event_type, state, data):
+        for listener in self.listeners:
+            listener({
+                'event': event_type,
+                'state': state.name if state else None,
+                'timestamp': time.time(),
+                'data': data.copy()
+            })
 
     def run(self, data):
         '''
@@ -115,6 +131,10 @@ class Graph:
         cur_state = self.init_state
         implicit_parallelization_info = None
         while cur_state is not None:
+
+
+            self.current_state = cur_state
+            self._notify_listeners('state_enter', cur_state, data)
  #           print('1) In main loop', implicit_parallelization_info)
 #            morph = _run_state(cur_state, data, implicit_parallelization_info)
             transfer_f, implicit_parallelization_info = _run_state(cur_state, data, implicit_parallelization_info)
@@ -127,6 +147,13 @@ class Graph:
 #            print(morph)
             if '__EXCEPTION__' in data:
                 return False
+            self._notify_listeners('state_exit', cur_state, data)
+            if cur_state:
+                self.execution_path.append({
+                    'state': cur_state.name,
+                    'data': data.copy()
+                })
+        self._notify_listeners('complete', None, data)
         return True
 
     def init_graph(self, data={}):
