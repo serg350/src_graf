@@ -26,6 +26,7 @@ class ExecutionEventService:
 
     def subscribe(self, session_id, callback):
         def listener(message):
+            print("[REDIS RAW MESSAGE]", message)
             if message['type'] == 'message':
                 try:
                     event = json.loads(message['data'])
@@ -36,6 +37,7 @@ class ExecutionEventService:
         self.pubsub.subscribe(**{f'execution:{session_id}': listener})
         thread = threading.Thread(target=self.pubsub.run_in_thread, daemon=True)
         thread.start()
+        print(f"[REDIS SUBSCRIBED] execution:{session_id}")
 
 
     def unsubscribe(self, session_id, handler):
