@@ -42,6 +42,7 @@
         background: rgba(0,0,0,0.5);
         z-index: 9999;
     }
+
 </style>
 {% endblock %}
 
@@ -63,6 +64,18 @@
 </div>
 
 <div id="modal-backdrop" class="modal-backdrop"></div>
+
+<div id="execution-controls">
+    <button id="btn-start" class="btn btn-primary">
+        <i class="fas fa-play"></i> Запустить
+    </button>
+    <button id="btn-pause" class="btn btn-secondary" disabled>
+        <i class="fas fa-pause"></i> Пауза
+    </button>
+    <div class="progress mt-2">
+        <div id="execution-progress" class="progress-bar" role="progressbar"></div>
+    </div>
+</div>
 
 <script>
 // Функция для открытия подграфа в модальном окне
@@ -110,5 +123,108 @@ document.getElementById('modal-backdrop').addEventListener('click', function() {
     document.getElementById('subgraph-modal').style.display = 'none';
     this.style.display = 'none';
 });
+
+document.addEventListener('DOMContentLoaded', function() {
+    const sessionId = "{{ execution_session|default_if_none:'' }}";
+    const eventSource = sessionId ? new EventSource(`/execution/events/${sessionId}/`) : null;
+
+    // Обработка событий выполнения
+    if (eventSource) {
+        eventSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+
+            switch(data.event) {
+                case 'start':
+                    handleExecutionStart(data);
+                    break;
+
+                case 'state_enter':
+                    highlightState(data.state, true);
+                    updateDataPanel(data.data);
+                    break;
+
+                case 'state_exit':
+                    highlightState(data.state, false);
+                    break;
+
+                case 'complete':
+                    handleExecutionComplete(data);
+                    break;
+            }
+        };
+    }
+
+    // Запуск выполнения
+    document.getElementById('btn-start').addEventListener('click', async () => {
+        const response = await fetch(`/graph/{{ graph.id }}/start/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                data: collectInitialData()
+            })
+        });
+
+        const result = await response.json();
+        window.location.href = `?session=${result.session_id}`;
+    });
+
+    // Функция подсветки состояния
+    function highlightState(stateName, isActive) {
+        const node = document.querySelector(`[data-name="${stateName}"]`);
+        if (node) {
+            if (isActive) {
+                node.classList.add('state-active');
+                node.scrollIntoView({behavior: 'smooth', block: 'center'});
+            } else {
+                node.classList.remove('state-active');
+            }
+        }
+    }
+
+    // Функция обновления панели данных
+    function updateDataPanel(data) {
+        const dataPanel = document.getElementById('data-panel');
+        dataPanel.innerHTML = '';
+
+        for (const [key, value] of Object.entries(data)) {
+            const item = document.createElement('div');
+            item.className = 'data-item';
+            item.innerHTML = `<strong>${key}:</strong> ${JSON.stringify(value)}`;
+            dataPanel.appendChild(item);
+        }
+    }
+});
 </script>
+
+<style>
+.state-active {
+    stroke: #ff5722;
+    stroke-width: 3px;
+    filter: drop-shadow(0 0 8px rgba(255, 87, 34, 0.7));
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% { stroke-width: 3px; }
+    50% { stroke-width: 5px; }
+    100% { stroke-width: 3px; }
+}
+
+#data-panel {
+    position: fixed;
+    right: 20px;
+    top: 20px;
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    max-width: 300px;
+    max-height: 400px;
+    overflow: auto;
+    z-index: 1000;
+}
+</style>
 {% endblock %}
