@@ -3,9 +3,10 @@ version: '3.8'
 services:
   web:
     build: .
-    command: python manage.py runserver 0.0.0.0:8000
+    #command: python manage.py runserver 0.0.0.0:8000
     volumes:
-      - .:/code
+      - static_value:/app/static/
+      - media_value:/app/media/
     ports:
       - "8000:8000"
     depends_on:
@@ -22,4 +23,6 @@ services:
       - redis-data:/data
 
 volumes:
+  static_value:
+  media_value:
   redis-data:

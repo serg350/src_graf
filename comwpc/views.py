@@ -494,14 +494,17 @@ def start_execution(request, graph_id):
 
         # Добавляем слушателя событий
         def event_listener(event):
+            print("[EVENT DEBUG]", event)
+            print("[DEBUG] launching run() with:", initial_data)
             event['session_id'] = session_id
             event_service.publish(session_id, event)
-            event_service.notify_local(event)
+            #event_service.notify_local(event)
 
         comsdk_graph.add_listener(event_listener)
 
         # Запускаем выполнение в отдельном потоке
         initial_data = json.loads(request.POST.get('data', '{}'))
+        initial_data.setdefault("a", 0)
         thread = threading.Thread(
             target=comsdk_graph.run,
             args=(initial_data,),
@@ -526,7 +529,7 @@ def execution_events(request, session_id):
 
     response = StreamingHttpResponse(event_generator(), content_type='text/event-stream')
     response['Cache-Control'] = 'no-cache'
-    response['Connection'] = 'keep-alive'
+    #response['Connection'] = 'keep-alive'
     return response
 
 def event_stream(session_id):
@@ -545,10 +548,19 @@ def event_stream(session_id):
                 yield f"data: {json.dumps(event)}\n\n"
             except queue.Empty:
                 # Проверяем, нужно ли завершить поток
-                if threading.current_thread().stopped:
-                    break
+                #if threading.current_thread().stopped:
+                #    break
                 # Отправляем keep-alive комментарий
                 yield ":keep-alive\n\n"
     finally:
         # Отписываемся при завершении
         event_service.unsubscribe(session_id, event_handler)
+
+def debug_run(request):
+    from comsdk.parser import Parser
+    parser = Parser()
+    g = parser.parse_file('./tests/test_aDOT/test_adot_files/sequential.adot')  # путь к test adot
+    def log_event(ev): print("[DEBUG EVENT]", ev)
+    g.add_listener(log_event)
+    g.run({"a": 1})
+    return JsonResponse({"status": "ok"})

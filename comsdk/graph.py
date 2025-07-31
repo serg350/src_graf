@@ -106,9 +106,11 @@ class Graph:
         )
 
     def add_listener(self, listener):
+        print("[DEBUG] listener added:", listener)
         self.listeners.append(listener)
 
     def _notify_listeners(self, event_type, state, data):
+        print("[DEBUG] Notifying listeners:", len(self.listeners))
         for listener in self.listeners:
             listener({
                 'event': event_type,
@@ -157,7 +159,9 @@ class Graph:
         return True
 
     def init_graph(self, data={}):
+        print("[DEBUG] entered init_graph()")
         if not self._initialized:
+            print("[DEBUG] calling idle_run(INIT)")
             self.init_state.idle_run(IdleRunType.INIT, [self.init_state.name])
             self._initialized = True
         else:
