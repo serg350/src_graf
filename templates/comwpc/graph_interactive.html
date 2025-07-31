@@ -78,6 +78,7 @@
 </div>
 
 <script>
+
 // Функция для открытия подграфа в модальном окне
 function openSubgraph(graphId) {
     // Показываем модальное окно и подложку
@@ -111,6 +112,45 @@ function openSubgraph(graphId) {
             content.innerHTML = `<h2>Ошибка: ${error.message}</h2>`;
         });
 }
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+// Функция сбора начальных данных
+function collectInitialData() {
+    const initialData = {};
+
+    // Сбор данных из элементов ввода
+    document.querySelectorAll('.data-input').forEach(input => {
+        const key = input.dataset.key;
+        const value = input.value;
+
+        // Попытка преобразовать в число
+        if (!isNaN(value) && value.trim() !== '') {
+            initialData[key] = parseFloat(value);
+        } else {
+            initialData[key] = value;
+        }
+    });
+
+    // Добавьте здесь другие источники данных при необходимости
+    // initialData['additional_param'] = 'some value';
+
+    return initialData;
+}
+
 
 // Закрытие модального окна
 document.querySelector('.close-modal').addEventListener('click', function() {
@@ -156,19 +196,29 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Запуск выполнения
     document.getElementById('btn-start').addEventListener('click', async () => {
-        const response = await fetch(`/graph/{{ graph.id }}/start/`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': getCookie('csrftoken')
-            },
-            body: JSON.stringify({
-                data: collectInitialData()
-            })
-        });
+        try {
+            const response = await fetch(`/graph/{{ graph.id }}/start/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({
+                    data: collectInitialData()
+                })
+            });
 
-        const result = await response.json();
-        window.location.href = `?session=${result.session_id}`;
+            if (!response.ok) {
+                throw new Error(`Ошибка сервера: ${response.status}`);
+            }
+
+            const result = await response.json();
+            window.location.href = `?session=${result.session_id}`;
+
+        } catch (error) {
+            console.error('Ошибка при запуске выполнения:', error);
+            alert('Не удалось запустить выполнение. Проверьте консоль для деталей.');
+        }
     });
 
     // Функция подсветки состояния
