@@ -3,278 +3,486 @@
 {% block extrahead %}
 {{ block.super }}
 <style>
-    .subgraph-modal {
-        display: none;
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 80%;
-        height: 80%;
-        background: white;
-        z-index: 10000;
-        border: 2px solid #ccc;
-        box-shadow: 0 0 20px rgba(0,0,0,0.3);
-        overflow: auto;
+    /* MUI-inspired styles */
+    :root {
+        --primary: #1976d2;
+        --primary-light: #42a5f5;
+        --secondary: #9c27b0;
+        --error: #d32f2f;
+        --text-primary: rgba(0, 0, 0, 0.87);
+        --text-secondary: rgba(0, 0, 0, 0.6);
+        --divider: rgba(0, 0, 0, 0.12);
+        --background: #f5f5f5;
+        --surface: #ffffff;
     }
 
-    .modal-content {
+    body {
+        background-color: var(--background);
+        font-family: 'Roboto', 'Helvetica', 'Arial', sans-serif;
+        color: var(--text-primary);
+    }
+
+    .container {
+        display: flex;
+        flex-direction: column;
+        max-width: 1400px;
+        margin: 0 auto;
         padding: 20px;
-        height: calc(100% - 40px);
+        gap: 20px;
     }
 
-    .close-modal {
-        position: absolute;
-        top: 10px;
-        right: 15px;
-        font-size: 24px;
+    .graph-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px;
+        background-color: var(--surface);
+        border-radius: 4px;
+        box-shadow: 0px 2px 1px -1px rgba(0,0,0,0.2),
+                    0px 1px 1px 0px rgba(0,0,0,0.14),
+                    0px 1px 3px 0px rgba(0,0,0,0.12);
+    }
+
+    .graph-title {
+        font-size: 1.5rem;
+        font-weight: 500;
+        color: var(--text-primary);
+    }
+
+    .graph-container {
+        display: flex;
+        gap: 20px;
+    }
+
+    .graph-svg-container {
+        flex: 3;
+        background-color: var(--surface);
+        border-radius: 4px;
+        box-shadow: 0px 2px 1px -1px rgba(0,0,0,0.2),
+                    0px 1px 1px 0px rgba(0,0,0,0.14),
+                    0px 1px 3px 0px rgba(0,0,0,0.12);
+        overflow: auto;
+        min-height: 600px;
+        padding: 16px;
+    }
+
+    .graph-data-container {
+        flex: 2;
+        background-color: var(--surface);
+        border-radius: 4px;
+        box-shadow: 0px 2px 1px -1px rgba(0,0,0,0.2),
+                    0px 1px 1px 0px rgba(0,0,0,0.14),
+                    0px 1px 3px 0px rgba(0,0,0,0.12);
+        padding: 16px;
+    }
+
+    .data-section-title {
+        font-size: 1.25rem;
+        font-weight: 500;
+        margin-bottom: 16px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--divider);
+    }
+
+    .execution-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        background-color: var(--surface);
+        border-radius: 4px;
+        box-shadow: 0px 2px 1px -1px rgba(0,0,0,0.2),
+                    0px 1px 1px 0px rgba(0,0,0,0.14),
+                    0px 1px 3px 0px rgba(0,0,0,0.12);
+        padding: 16px;
+    }
+
+    .controls-row {
+        display: flex;
+        gap: 12px;
+    }
+
+    .mui-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        box-sizing: border-box;
+        background-color: transparent;
+        outline: 0;
+        border: 0;
+        margin: 0;
         cursor: pointer;
-        z-index: 10001;
+        user-select: none;
+        vertical-align: middle;
+        text-decoration: none;
+        font-weight: 500;
+        font-size: 0.875rem;
+        line-height: 1.75;
+        letter-spacing: 0.02857em;
+        text-transform: uppercase;
+        min-width: 64px;
+        padding: 6px 16px;
+        border-radius: 4px;
+        transition: background-color 250ms cubic-bezier(0.4, 0, 0.2, 1) 0ms,
+                    box-shadow 250ms cubic-bezier(0.4, 0, 0.2, 1) 0ms,
+                    border-color 250ms cubic-bezier(0.4, 0, 0.2, 1) 0ms;
     }
 
-    .modal-backdrop {
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
+    .mui-button.primary {
+        color: #fff;
+        background-color: var(--primary);
+        box-shadow: 0px 3px 1px -2px rgba(0,0,0,0.2),
+                    0px 2px 2px 0px rgba(0,0,0,0.14),
+                    0px 1px 5px 0px rgba(0,0,0,0.12);
+    }
+
+    .mui-button.primary:hover {
+        background-color: var(--primary-light);
+        box-shadow: 0px 2px 4px -1px rgba(0,0,0,0.2),
+                    0px 4px 5px 0px rgba(0,0,0,0.14),
+                    0px 1px 10px 0px rgba(0,0,0,0.12);
+    }
+
+    .mui-button.secondary {
+        color: #fff;
+        background-color: var(--secondary);
+    }
+
+    .mui-button:disabled {
+        color: rgba(0, 0, 0, 0.26);
+        background-color: rgba(0, 0, 0, 0.12);
+        box-shadow: none;
+        cursor: default;
+        pointer-events: none;
+    }
+
+    .progress-container {
+        width: 100%;
+        height: 8px;
+        background-color: rgba(0, 0, 0, 0.12);
+        border-radius: 4px;
+        overflow: hidden;
+    }
+
+    .progress-bar {
+        height: 100%;
+        background-color: var(--primary);
+        border-radius: 4px;
+        transition: width 0.3s ease;
+    }
+
+    .states-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .states-table th {
+        text-align: left;
+        padding: 12px 16px;
+        font-weight: 500;
+        color: var(--text-secondary);
+        border-bottom: 1px solid var(--divider);
+    }
+
+    .states-table td {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--divider);
+    }
+
+    .states-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    .states-table tr.active {
+        background-color: rgba(25, 118, 210, 0.08);
+    }
+
+    /* SVG Styles */
+    .graphviz {
         width: 100%;
         height: 100%;
-        background: rgba(0,0,0,0.5);
-        z-index: 9999;
     }
 
+    .node polygon, .node ellipse {
+        fill: #e3f2fd;
+        stroke: var(--primary);
+        stroke-width: 2px;
+    }
+
+    .node text {
+        font-family: 'Roboto', sans-serif;
+        font-size: 14px;
+        fill: var(--text-primary);
+    }
+
+    .edge path {
+        stroke: var(--text-secondary);
+        stroke-width: 2px;
+        fill: none;
+    }
+
+    .edge polygon {
+        fill: var(--text-secondary);
+        stroke: var(--text-secondary);
+    }
+
+    .edge text {
+        font-family: 'Roboto', sans-serif;
+        font-size: 12px;
+        fill: var(--text-secondary);
+    }
+
+    .state-active > polygon, .state-active > ellipse {
+        stroke: #ff5722;
+        stroke-width: 3px;
+        filter: drop-shadow(0 0 8px rgba(255, 87, 34, 0.7));
+        animation: pulse 1.5s infinite;
+    }
+
+    .state-active > text {
+        font-weight: bold;
+        fill: #ff5722;
+    }
+
+    @keyframes pulse {
+        0% { stroke-width: 3px; }
+        50% { stroke-width: 5px; }
+        100% { stroke-width: 3px; }
+    }
 </style>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
 {% endblock %}
 
 {% block content %}
-<div style="margin: 20px;">
-    <h1>{{ graph.name }}</h1>
-    <div style="width: 100%; overflow: auto; border: 1px solid #ddd; padding: 10px;">
-        {{ svg_content|safe }}
+<div class="container">
+    <div class="graph-header">
+        <h1 class="graph-title">{{ graph.name }}</h1>
+        <a href="{% url 'admin:comwpc_graph_change' graph.id %}" class="mui-button secondary">
+            Вернуться к редактированию
+        </a>
     </div>
-    <div style="margin-top: 20px;">
-        <a href="{% url 'admin:comwpc_graph_change' graph.id %}" class="button">Вернуться к редактированию</a>
+
+    <div class="execution-controls">
+        <div class="controls-row">
+            <button id="btn-start" class="mui-button primary">
+                <i class="fas fa-play"></i> Запустить
+            </button>
+            <button id="btn-pause" class="mui-button" disabled>
+                <i class="fas fa-pause"></i> Пауза
+            </button>
+        </div>
+        <div class="progress-container">
+            <div id="execution-progress" class="progress-bar" style="width: 0%"></div>
+        </div>
     </div>
-</div>
 
-<!-- Модальное окно для подграфов -->
-<div id="subgraph-modal" class="subgraph-modal">
-    <span class="close-modal">&times;</span>
-    <div class="modal-content" id="subgraph-content"></div>
-</div>
+    <div class="graph-container">
+        <div class="graph-svg-container">
+            {{ svg_content|safe }}
+        </div>
 
-<div id="modal-backdrop" class="modal-backdrop"></div>
-
-<div id="execution-controls">
-    <button id="btn-start" class="btn btn-primary">
-        <i class="fas fa-play"></i> Запустить
-    </button>
-    <button id="btn-pause" class="btn btn-secondary" disabled>
-        <i class="fas fa-pause"></i> Пауза
-    </button>
-    <div class="progress mt-2">
-        <div id="execution-progress" class="progress-bar" role="progressbar"></div>
+        <div class="graph-data-container">
+            <h2 class="data-section-title">Состояния выполнения</h2>
+            <table class="states-table" id="states-table">
+                <thead>
+                    <tr>
+                        <th>Состояние</th>
+                        <th>Данные</th>
+                    </tr>
+                </thead>
+                <tbody id="states-body">
+                    <!-- Will be populated by JavaScript -->
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 
 <script>
-
-// Функция для открытия подграфа в модальном окне
-function openSubgraph(graphId) {
-    // Показываем модальное окно и подложку
-    const modal = document.getElementById('subgraph-modal');
-    const backdrop = document.getElementById('modal-backdrop');
-    const content = document.getElementById('subgraph-content');
-
-    // Заголовок загрузки
-    content.innerHTML = '<h2>Загрузка графа...</h2>';
-
-    // Показываем элементы
-    modal.style.display = 'block';
-    backdrop.style.display = 'block';
-
-    // Загружаем содержимое графа
-    fetch(`/graph-visualization/${graphId}/`)
-        .then(response => response.text())
-        .then(data => {
-            // Извлекаем только содержимое блока content
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(data, 'text/html');
-            const contentBlock = doc.querySelector('.content');
-
-            if (contentBlock) {
-                content.innerHTML = contentBlock.innerHTML;
-            } else {
-                content.innerHTML = '<h2>Ошибка загрузки графа</h2>';
-            }
-        })
-        .catch(error => {
-            content.innerHTML = `<h2>Ошибка: ${error.message}</h2>`;
-        });
-}
-
-function getCookie(name) {
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== '') {
-        const cookies = document.cookie.split(';');
-        for (let i = 0; i < cookies.length; i++) {
-            const cookie = cookies[i].trim();
-            if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                break;
-            }
-        }
-    }
-    return cookieValue;
-}
-
-// Функция сбора начальных данных
-function collectInitialData() {
-    const initialData = {};
-
-    // Сбор данных из элементов ввода
-    document.querySelectorAll('.data-input').forEach(input => {
-        const key = input.dataset.key;
-        const value = input.value;
-
-        // Попытка преобразовать в число
-        if (!isNaN(value) && value.trim() !== '') {
-            initialData[key] = parseFloat(value);
-        } else {
-            initialData[key] = value;
-        }
-    });
-
-    // Добавьте здесь другие источники данных при необходимости
-    // initialData['additional_param'] = 'some value';
-
-    return initialData;
-}
-
-
-// Закрытие модального окна
-document.querySelector('.close-modal').addEventListener('click', function() {
-    document.getElementById('subgraph-modal').style.display = 'none';
-    document.getElementById('modal-backdrop').style.display = 'none';
-});
-
-// Закрытие при клике на подложку
-document.getElementById('modal-backdrop').addEventListener('click', function() {
-    document.getElementById('subgraph-modal').style.display = 'none';
-    this.style.display = 'none';
-});
-
 document.addEventListener('DOMContentLoaded', function() {
     const sessionId = "{{ execution_session|default_if_none:'' }}";
-    const eventSource = sessionId ? new EventSource(`/execution/events/${sessionId}/`) : null;
+    const statesBody = document.getElementById('states-body');
+    let executionCompleted = false;
 
-    // Обработка событий выполнения
-    if (eventSource) {
+    // Функция для добавления состояния в таблицу
+    function addStateToTable(state, data) {
+        const row = document.createElement('tr');
+        row.className = 'active';
+
+        const stateCell = document.createElement('td');
+        stateCell.textContent = state;
+        stateCell.style.fontWeight = '500';
+
+        const dataCell = document.createElement('td');
+        dataCell.textContent = JSON.stringify(data, null, 2);
+
+        row.appendChild(stateCell);
+        row.appendChild(dataCell);
+        statesBody.appendChild(row);
+
+        // Прокрутка к последнему элементу
+        row.scrollIntoView({behavior: 'smooth'});
+    }
+
+    // Функция для обработки завершения выполнения
+    function handleExecutionComplete(data) {
+        executionCompleted = true;
+        document.getElementById('btn-start').disabled = false;
+        document.getElementById('btn-pause').disabled = true;
+        document.getElementById('execution-progress').style.width = '100%';
+
+        // Добавляем сообщение о завершении
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td colspan="2" style="color: #2E7D32; font-weight: 500;">
+                <i class="fas fa-check-circle"></i> Выполнение завершено
+            </td>
+        `;
+        statesBody.appendChild(row);
+    }
+
+    // Создаем EventSource для получения событий
+    if (sessionId) {
+        const eventSource = new EventSource(`/execution/events/${sessionId}/`);
+
         eventSource.onmessage = function(event) {
-            const data = JSON.parse(event.data);
+            try {
+                const data = JSON.parse(event.data);
+                console.log("Received event:", data);
 
-            switch(data.event) {
-                case 'start':
-                    handleExecutionStart(data);
-                    break;
+                switch(data.event) {
+                    case 'state_enter':
+                        addStateToTable(data.state, data.data);
+                        highlightState(data.state, true);
+                        break;
 
-                case 'state_enter':
-                    highlightState(data.state, true);
-                    updateDataPanel(data.data);
-                    break;
+                    case 'state_exit':
+                        highlightState(data.state, false);
+                        break;
 
-                case 'state_exit':
-                    highlightState(data.state, false);
-                    break;
-
-                case 'complete':
-                    handleExecutionComplete(data);
-                    break;
+                    case 'complete':
+                        handleExecutionComplete(data);
+                        eventSource.close();
+                        break;
+                }
+            } catch (error) {
+                console.error("Error processing event:", error);
             }
+        };
+
+        eventSource.onerror = function(error) {
+            console.error("EventSource error:", error);
+            if (!executionCompleted) {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td colspan="2" style="color: #D32F2F;">
+                        <i class="fas fa-exclamation-triangle"></i> Ошибка соединения
+                    </td>
+                `;
+                statesBody.appendChild(row);
+            }
+            eventSource.close();
         };
     }
 
+    // Функция подсветки состояния
+    function highlightState(stateName, isActive) {
+        const nodes = document.querySelectorAll(`[data-name="${stateName}"]`);
+        nodes.forEach(node => {
+            if (isActive) {
+                node.classList.add('state-active');
+                // Плавная прокрутка к активному узлу
+                const rect = node.getBoundingClientRect();
+                const svgContainer = document.querySelector('.graph-svg-container');
+                const scrollTop = svgContainer.scrollTop;
+                const scrollLeft = svgContainer.scrollLeft;
+                const centerX = rect.left + rect.width/2 - svgContainer.clientWidth/2;
+                const centerY = rect.top + rect.height/2 - svgContainer.clientHeight/2;
+
+                svgContainer.scrollTo({
+                    top: scrollTop + centerY,
+                    left: scrollLeft + centerX,
+                    behavior: 'smooth'
+                });
+            } else {
+                node.classList.remove('state-active');
+            }
+        });
+    }
+
     // Запуск выполнения
-    document.getElementById('btn-start').addEventListener('click', async () => {
+    document.getElementById('btn-start').addEventListener('click', async function() {
         try {
+            // Сброс состояния
+            statesBody.innerHTML = '';
+            executionCompleted = false;
+            this.disabled = true;
+            document.getElementById('btn-pause').disabled = false;
+            document.getElementById('execution-progress').style.width = '0%';
+
+            // Добавляем сообщение о начале выполнения
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td colspan="2" style="color: #1976D2;">
+                    <i class="fas fa-play-circle"></i> Выполнение запущено...
+                </td>
+            `;
+            statesBody.appendChild(row);
+
+            // Запуск выполнения на сервере
             const response = await fetch(`/graph/{{ graph.id }}/start/`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRFToken': getCookie('csrftoken')
                 },
-                body: JSON.stringify({
-                    data: collectInitialData()
-                })
+                body: JSON.stringify({data: {}})
             });
 
-            if (!response.ok) {
-                throw new Error(`Ошибка сервера: ${response.status}`);
-            }
+            if (!response.ok) throw new Error(`Server error: ${response.status}`);
 
             const result = await response.json();
+            // Обновляем страницу с новым session_id
             window.location.href = `?session=${result.session_id}`;
 
         } catch (error) {
             console.error('Ошибка при запуске выполнения:', error);
-            alert('Не удалось запустить выполнение. Проверьте консоль для деталей.');
+
+            // Добавляем сообщение об ошибке
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td colspan="2" style="color: #D32F2F;">
+                    <i class="fas fa-exclamation-circle"></i> ${error.message}
+                </td>
+            `;
+            statesBody.appendChild(row);
+
+            document.getElementById('btn-start').disabled = false;
         }
     });
 
-    // Функция подсветки состояния
-    function highlightState(stateName, isActive) {
-        const node = document.querySelector(`[data-name="${stateName}"]`);
-        if (node) {
-            if (isActive) {
-                node.classList.add('state-active');
-                node.scrollIntoView({behavior: 'smooth', block: 'center'});
-            } else {
-                node.classList.remove('state-active');
+    // Helper functions
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
             }
         }
+        return cookieValue;
     }
 
-    // Функция обновления панели данных
-    function updateDataPanel(data) {
-        const dataPanel = document.getElementById('data-panel');
-        dataPanel.innerHTML = '';
-
-        for (const [key, value] of Object.entries(data)) {
-            const item = document.createElement('div');
-            item.className = 'data-item';
-            item.innerHTML = `<strong>${key}:</strong> ${JSON.stringify(value)}`;
-            dataPanel.appendChild(item);
-        }
+    function collectInitialData() {
+        const initialData = {};
+        // Здесь можно добавить сбор начальных данных при необходимости
+        initialData['a'] = 0; // Пример начального значения
+        return initialData;
     }
 });
 </script>
-
-<style>
-.state-active {
-    stroke: #ff5722;
-    stroke-width: 3px;
-    filter: drop-shadow(0 0 8px rgba(255, 87, 34, 0.7));
-    animation: pulse 1.5s infinite;
-}
-
-@keyframes pulse {
-    0% { stroke-width: 3px; }
-    50% { stroke-width: 5px; }
-    100% { stroke-width: 3px; }
-}
-
-#data-panel {
-    position: fixed;
-    right: 20px;
-    top: 20px;
-    background: white;
-    padding: 15px;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    max-width: 300px;
-    max-height: 400px;
-    overflow: auto;
-    z-index: 1000;
-}
-</style>
 {% endblock %}
