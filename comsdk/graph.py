@@ -139,6 +139,7 @@ class Graph:
             self._notify_listeners('state_enter', cur_state, data)
  #           print('1) In main loop', implicit_parallelization_info)
 #            morph = _run_state(cur_state, data, implicit_parallelization_info)
+            time.sleep(3)
             transfer_f, implicit_parallelization_info = _run_state(cur_state, data, implicit_parallelization_info)
 #            print('2) In main loop', implicit_parallelization_info)
             if '__EXCEPTION__' in data:

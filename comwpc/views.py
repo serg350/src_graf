@@ -1,5 +1,6 @@
 import json
 import queue
+import re
 import shutil
 import time
 
@@ -30,14 +31,24 @@ def graph_interactive_view(request, graph_id):
             'data-id': str(state.id)
         }
 
+        #if state.subgraph:
+        #    attrs.update({
+        #        'shape': 'folder',
+        #        'color': 'orange',
+        #        'style': 'filled',
+        #        'fillcolor': 'moccasin',
+        #        'URL': f"javascript:openSubgraph({state.subgraph.id})"
+        #    })
         if state.subgraph:
-            attrs.update({
-                'shape': 'folder',
-                'color': 'orange',
-                'style': 'filled',
-                'fillcolor': 'moccasin',
-                'URL': f"javascript:openSubgraph({state.subgraph.id})"
-            })
+            dot.node(
+                str(state.id),
+                label=state.name,
+                shape='folder',
+                color='orange',
+                style='filled',
+                fillcolor='moccasin',
+                URL=f"javascript:openSubgraph({state.subgraph.id})"
+            )
         else:
             color = 'green' if state.is_terminal else 'blue'
             attrs.update({
@@ -45,8 +56,15 @@ def graph_interactive_view(request, graph_id):
                 'style': 'filled' if state.is_terminal else '',
                 'fillcolor': 'lightgreen' if state.is_terminal else 'lightblue'
             })
-
-        dot.node(str(state.id), label=state.name, **{'attributes': json.dumps(attrs)})
+        dot.node(
+            str(state.id),
+            label=state.name,
+            **{
+                'data-name': state.name,  # Явное указание атрибутов
+                'data-id': str(state.id),
+                'attributes': json.dumps(attrs)
+            }
+        )
     # Добавляем переходы
     for transfer in graph.transfer_set.all():
         dot.edge(
@@ -108,11 +126,33 @@ def graph_interactive_view(request, graph_id):
 
     svg_str = svg_str.replace('<svg ', '<svg style="max-width: 100%; height: auto;" ')
 
+    # Модифицируем SVG для добавления data-атрибутов
+    svg_str = add_data_attributes(svg_str, graph)
+
     return render(request, 'comwpc/graph_interactive.html', {
         'graph': graph,
         'execution_session': session_id,
         'svg_content': mark_safe(svg_str + zoom_script)
     })
+
+
+def add_data_attributes(svg_str, graph):
+    """Добавляет data-атрибуты в SVG для интерактивности"""
+    # Создаем маппинг id состояния -> имя
+    state_mapping = {str(state.id): state.name for state in graph.state_set.all()}
+
+    # Регулярное выражение для поиска узлов
+    pattern = r'<g id="(node\d+)" class="node">\s*<title>([^<]+)<\/title>'
+
+    # Заменяем title на группу с data-атрибутами
+    def add_attributes(match):
+        node_id = match.group(1)
+        title = match.group(2)
+        state_name = state_mapping.get(title.split(':')[-1].strip(), title)
+        return f'<g id="{node_id}" class="node" data-name="{state_name}" data-id="{title}">'
+
+    return re.sub(pattern, add_attributes, svg_str)
+
 
 @login_required
 def graph_interactive_content(request, graph_id):
@@ -504,7 +544,7 @@ def start_execution(request, graph_id):
 
         # Запускаем выполнение в отдельном потоке
         initial_data = json.loads(request.POST.get('data', '{}'))
-        initial_data.setdefault("a", 0)
+        initial_data.setdefault("a", 10)
         thread = threading.Thread(
             target=comsdk_graph.run,
             args=(initial_data,),
@@ -540,6 +580,7 @@ def event_stream(session_id):
         event_queue.put(event)
     # Подписываемся на события
     event_service.subscribe(session_id, event_handler)
+    print(f"[SSE] yielding ping for session: {session_id}")
     try:
         while True:
             try:
@@ -551,7 +592,8 @@ def event_stream(session_id):
                 #if threading.current_thread().stopped:
                 #    break
                 # Отправляем keep-alive комментарий
-                yield ":keep-alive\n\n"
+                yield ": ping\n\n"
+                #yield ":keep-alive\n\n"
     finally:
         # Отписываемся при завершении
         event_service.unsubscribe(session_id, event_handler)
