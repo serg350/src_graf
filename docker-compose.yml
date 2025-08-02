@@ -3,12 +3,23 @@ version: '3.8'
 services:
   web:
     build: .
-    #command: python manage.py runserver 0.0.0.0:8000
+    command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - static_value:/app/static/
       - media_value:/app/media/
     ports:
       - "8000:8000"
+    depends_on:
+      - redis
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - EVENT_SERVICE_URL=redis://redis:6379/1
+
+  celery:
+    build: .
+    command: celery -A config worker --loglevel=info
+    volumes:
+      - .:/app
     depends_on:
       - redis
     environment:

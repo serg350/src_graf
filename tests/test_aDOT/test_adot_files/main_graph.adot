@@ -9,8 +9,8 @@ digraph MAIN_GRAPH {
     EDGE_MAIN [predicate=ALWAYS_TRUE, function=MAIN_PROCESS, comment = edge_1]
 
     // Главный граф
-    PREPROCESS [subgraph=D:/Dev_MGTY/src/tests/test_aDOT/test_adot_files/preprocess.adot]
-    POSTPROCESS [subgraph=D:/Dev_MGTY/src/tests/test_aDOT/test_adot_files/postprocess.adot]
+    PREPROCESS [subgraph=./tests/test_aDOT/test_adot_files/preprocess.adot]
+    POSTPROCESS [subgraph=./tests/test_aDOT/test_adot_files/postprocess.adot]
 
 
     __BEGIN__ -> PREPROCESS

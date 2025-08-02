@@ -15,6 +15,11 @@ from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 
 from django.contrib.auth.decorators import login_required
 
+from config import settings
+
+execution_status = {}
+
+
 @login_required
 def graph_interactive_view(request, graph_id):
     graph = get_object_or_404(Graph, pk=graph_id)
@@ -22,7 +27,9 @@ def graph_interactive_view(request, graph_id):
 
     dot = graphviz.Digraph()
     dot.attr('node', shape='box')
-    dot.attr(rankdir='LR')
+    #dot.attr(rankdir='LR')
+    dot.attr(rankdir='TB')
+    dot.attr('node', shape='rect', style='rounded,filled', fontname='Roboto')
 
     # Добавляем состояния с атрибутом data-name
     for state in graph.state_set.all():
@@ -132,7 +139,8 @@ def graph_interactive_view(request, graph_id):
     return render(request, 'comwpc/graph_interactive.html', {
         'graph': graph,
         'execution_session': session_id,
-        'svg_content': mark_safe(svg_str + zoom_script)
+        'svg_content': mark_safe(svg_str + zoom_script),
+        'is_main_graph': not graph.is_subgraph
     })
 
 
@@ -204,6 +212,60 @@ def graph_interactive_content(request, graph_id):
     })
 
 
+# views.py
+@login_required
+def graph_svg_view(request, graph_id):
+    graph = get_object_or_404(Graph, pk=graph_id)
+    dot = graphviz.Digraph()
+    dot.attr('node', shape='box')
+    dot.attr(rankdir='TB')
+    dot.attr('node', shape='rect', style='rounded,filled', fontname='Roboto')
+
+    # Добавляем состояния
+    for state in graph.state_set.all():
+        if state.subgraph:
+            dot.node(
+                str(state.id),
+                label=state.name,
+                shape='folder',
+                color='orange',
+                style='filled',
+                fillcolor='moccasin',
+                URL=f"javascript:openSubgraph({state.subgraph.id})"
+            )
+        else:
+            color = 'green' if state.is_terminal else 'blue'
+            dot.node(
+                str(state.id),
+                label=state.name,
+                color=color,
+                style='filled' if state.is_terminal else '',
+                fillcolor='lightgreen' if state.is_terminal else 'lightblue'
+            )
+
+    # Добавляем переходы
+    for transfer in graph.transfer_set.all():
+        dot.edge(
+            str(transfer.source.id),
+            str(transfer.target.id),
+            label=transfer.edge.comment
+        )
+
+    # Генерируем SVG
+    svg_bytes = dot.pipe(format='svg')
+    svg_str = svg_bytes.decode('utf-8')
+
+    # Исправление: добавляем data-атрибуты
+    svg_str = add_data_attributes(svg_str, graph)
+
+    svg_str = re.sub(
+        r'<svg ',
+        f'<svg data-graph-name="{graph.name}" ',
+        svg_str
+    )
+
+    return HttpResponse(svg_str, content_type='image/svg+xml')
+
 # Для парсинга графа
 from django.shortcuts import render, redirect
 from django.contrib import messages
@@ -224,23 +286,33 @@ def import_dot(request):
         if form.is_valid():
             dot_file = request.FILES['dot_file']
 
-            # Для AJAX-запросов возвращаем JSON
             if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
                 try:
                     temp_dir = tempfile.mkdtemp()
                     main_temp_path = os.path.join(temp_dir, dot_file.name)
 
-                    # Сохраняем основной файл
                     with open(main_temp_path, 'wb+') as destination:
                         for chunk in dot_file.chunks():
                             destination.write(chunk)
 
-                    # Парсим основной файл
                     parser = Parser()
                     comsdk_graph = parser.parse_file(main_temp_path)
+                    graph_name = parser.fact.name
+
+                    # Проверяем существование основного графа
+                    existing_main_graph = Graph.objects.filter(
+                        name=graph_name,
+                        is_subgraph=False
+                    ).first()
+
+                    if existing_main_graph:
+                        return JsonResponse({
+                            'success': False,
+                            'error': f'Граф "{graph_name}" уже существует (ID: {existing_main_graph.id})'
+                        })
 
                     # Обрабатываем граф рекурсивно
-                    processed_graphs = {}  # Кеш для уже обработанных графов
+                    processed_graphs = {}
                     django_graph = process_graph_recursively(
                         parser=parser,
                         comsdk_graph=comsdk_graph,
@@ -249,22 +321,18 @@ def import_dot(request):
                         processed_graphs=processed_graphs,
                         parent_graph=None
                     )
+
                     stats = {
                         'states': django_graph.state_set.count(),
                         'edges': Edge.objects.filter(transfer__graph=django_graph).count(),
                         'subgraphs': Graph.objects.filter(parent_graph=django_graph).count()
                     }
 
-                    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                        return JsonResponse({
-                            'success': True,
-                            'redirect_url': reverse('admin:comwpc_graph_change', args=[django_graph.id]),
-                            'stats': stats
-                        })
-                    else:
-                        messages.success(request, 'Импорт завершен!')
-                        return redirect('admin:comwpc_graph_change', django_graph.id)
-
+                    return JsonResponse({
+                        'success': True,
+                        'redirect_url': reverse('admin:comwpc_graph_change', args=[django_graph.id]),
+                        'stats': stats
+                    })
                 except Exception as e:
                     return JsonResponse({
                         'success': False,
@@ -274,19 +342,17 @@ def import_dot(request):
                 # Обработка для обычных запросов
                 try:
                     form = DotImportForm()
+                # ... (код для обычных запросов)
                 except Exception as e:
                     messages.error(request, f'Ошибка импорта: {str(e)}')
         else:
-            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                return JsonResponse({
-                    'success': False,
-                    'error': 'Неверный формат файла'
-                })
+            return JsonResponse({
+                'success': False,
+                'error': 'Неверный формат файла'
+            })
 
-    # Для GET-запросов
     form = DotImportForm()
     return render(request, 'admin/import_dot.html', {'form': form})
-
 
 def import_progress(request):
     def event_stream():
@@ -301,18 +367,24 @@ def import_progress(request):
 
 
 def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processed_graphs, parent_graph=None):
-    """Рекурсивно обрабатывает граф и его подграфы с использованием parser.fact.entities"""
+    """Рекурсивно обрабатывает граф и его подграфы"""
     if dot_path in processed_graphs:
         return processed_graphs[dot_path]
 
     print(f"Обработка графа: {dot_path}")
 
+    # Создаем базовую директорию для поиска файлов
+    BASE_SEARCH_DIR = getattr(settings, 'SUBGRAPH_BASE_DIR', '/app')
+    # base_dir = os.path.dirname(dot_path)
+
+    # Читаем содержимое DOT-файла
     with open(dot_path, 'r', encoding='utf-8') as f:
         dot_content = f.read()
 
-    # Проверяем, существует ли граф с таким именем
+    # Проверяем существование графа
     graph_name = parser.fact.name
-    existing_graph = Graph.objects.filter(name=graph_name, is_subgraph=(parent_graph is not None)).first()
+    # is_subgraph = parent_graph is not None
+    existing_graph = Graph.objects.filter(name=graph_name, is_subgraph=parent_graph is not None, ).first()
 
     if existing_graph:
         graph = existing_graph
@@ -325,7 +397,7 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
             is_subgraph=parent_graph is not None,
             parent_graph=parent_graph
         )
-        print(f"Создан новый граф: {graph.name} (ID: {graph.id}), is_subgraph={parent_graph is not None}")
+        print(f"Создан новый граф: {graph.name} (ID: {graph.id}), is_subgraph={parent_graph is not None,}")
 
     processed_graphs[dot_path] = graph
 
@@ -358,16 +430,40 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
         if subgraph_path:
             # Обрабатываем относительные пути
             if not os.path.isabs(subgraph_path):
-                base_dir = os.path.dirname(dot_path)
-                subgraph_path = os.path.join(base_dir, subgraph_path)
+                # Пытаемся найти файл в разных возможных местах
+                possible_paths = [
+                    # os.path.join(os.path.dirname(dot_path), subgraph_path),
+                    os.path.join(BASE_SEARCH_DIR, subgraph_path),
+                    # os.path.join(BASE_SEARCH_DIR, 'tests', 'test_aDOT', 'test_adot_files',
+                    # os.path.basename(subgraph_path))
+                ]
 
-            # Формируем путь во временной директории
+                found = False
+                for path in possible_paths:
+                    if os.path.exists(path):
+                        subgraph_path = path
+                        found = True
+                        print(f"Нашли файл подграфа по пути: {subgraph_path}")
+                        break
+
+                if not found:
+                    print(f"Файл подграфа не найден ни по одному из путей: {possible_paths}")
+                    continue
+            else:
+                if not os.path.exists(subgraph_path):
+                    print(f"Файл подграфа не найден: {subgraph_path}")
+                    continue
+
+            # Копируем файл подграфа во временную директорию
             subgraph_filename = os.path.basename(subgraph_path)
             temp_subgraph_path = os.path.join(temp_dir, subgraph_filename)
 
-            # Копируем файл подграфа, если его нет
-            if not os.path.exists(temp_subgraph_path) and os.path.exists(subgraph_path):
+            if os.path.exists(subgraph_path):
                 shutil.copy2(subgraph_path, temp_subgraph_path)
+                print(f"Скопирован файл подграфа: {subgraph_path} -> {temp_subgraph_path}")
+            else:
+                print(f"Файл подграфа не найден: {subgraph_path}")
+                continue
 
             if os.path.exists(temp_subgraph_path):
                 try:
@@ -379,7 +475,7 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
                     # Получаем имя подграфа
                     subgraph_name = sub_parser.fact.name
 
-                    # Проверяем, существует ли подграф в базе данных
+                    # Проверяем существование подграфа
                     existing_subgraph = Graph.objects.filter(
                         name=subgraph_name,
                         is_subgraph=True
@@ -402,21 +498,42 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
                 except Exception as e:
                     print(f"Ошибка обработки подграфа: {str(e)}")
             else:
-                print(f"Файл подграфа не найден: {temp_subgraph_path}")
+                print(f"Файл подграфа не найден после копирования: {temp_subgraph_path}")
 
         # Создаем состояние
         if current.name not in state_mapping:
-            django_state = State.objects.create(
+            django_state, created = State.objects.get_or_create(
                 name=current.name,
                 graph=graph,
-                is_terminal=current.is_term_state,
-                subgraph=subgraph_obj,
-                array_keys_mapping=current.array_keys_mapping,
-                is_subgraph_node=subgraph_obj is not None
+                defaults={
+                    'is_terminal': current.is_term_state,
+                    'subgraph': subgraph_obj,
+                    'array_keys_mapping': current.array_keys_mapping,
+                    'is_subgraph_node': subgraph_obj is not None
+                }
             )
+
+            # Если состояние уже существует - обновляем его подграф
+            if not created and django_state.subgraph != subgraph_obj:
+                django_state.subgraph = subgraph_obj
+                django_state.is_subgraph_node = subgraph_obj is not None
+                django_state.save()
+                print(f"Обновлен подграф для состояния {django_state.name}")
+
             state_mapping[current.name] = django_state
+            if subgraph_obj:
+                print(f"Установлен подграф для состояния {current.name}: {subgraph_obj.name} (ID: {subgraph_obj.id})")
+            else:
+                print(f"Состояние {current.name} без подграфа")
         else:
             django_state = state_mapping[current.name]
+            # Обновляем подграф даже если состояние уже было в маппинге
+            if django_state.subgraph != subgraph_obj:
+                django_state.subgraph = subgraph_obj
+                django_state.is_subgraph_node = subgraph_obj is not None
+                django_state.save()
+                print(f"Обновлен подграф для существующего состояния {django_state.name}")
+
         print(f"Создано состояние: {django_state.name} (ID: {django_state.id}), subgraph={subgraph_obj is not None}")
 
         # Обработка переходов
@@ -435,16 +552,37 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
 
                 target_subgraph_obj = None
                 if target_subgraph_path:
+                    # Обрабатываем относительные пути
                     if not os.path.isabs(target_subgraph_path):
-                        base_dir = os.path.dirname(dot_path)
-                        target_subgraph_path = os.path.join(base_dir, target_subgraph_path)
+                        # Пытаемся найти файл в разных возможных местах
+                        possible_paths = [
+                            os.path.join(BASE_SEARCH_DIR, target_subgraph_path),
+                        ]
+                        found = False
+                        for path in possible_paths:
+                            if os.path.exists(path):
+                                target_subgraph_path = path
+                                found = True
+                                print(f"Нашли файл подграфа по пути: {target_subgraph_path}")
+                                break
+                        if not found:
+                            print(f"Файл подграфа цели не найден ни по одному из путей: {possible_paths}")
+                            continue
+                    else:
+                        if not os.path.exists(target_subgraph_path):
+                            print(f"Файл подграфа цели не найден: {target_subgraph_path}")
+                            continue
 
+                    # Копируем файл подграфа во временную директорию
                     target_subgraph_filename = os.path.basename(target_subgraph_path)
                     temp_target_subgraph_path = os.path.join(temp_dir, target_subgraph_filename)
 
-                    # Копируем файл подграфа, если его нет
-                    if not os.path.exists(temp_target_subgraph_path) and os.path.exists(target_subgraph_path):
+                    if os.path.exists(target_subgraph_path):
                         shutil.copy2(target_subgraph_path, temp_target_subgraph_path)
+                        print(f"Скопирован файл подграфа цели: {target_subgraph_path} -> {temp_target_subgraph_path}")
+                    else:
+                        print(f"Файл подграфа цели не найден: {target_subgraph_path}")
+                        continue
 
                     if os.path.exists(temp_target_subgraph_path):
                         try:
@@ -476,17 +614,27 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
                         except Exception as e:
                             print(f"Ошибка обработки подграфа цели: {str(e)}")
                     else:
-                        print(f"Файл подграфа цели не найден: {temp_target_subgraph_path}")
+                        print(f"Файл подграфа цели не найден после копирования: {temp_target_subgraph_path}")
 
                 # Создаем целевое состояние
-                target_state = State.objects.create(
+                target_state, created = State.objects.get_or_create(
                     name=target_name,
                     graph=graph,
-                    is_terminal=target.is_term_state,
-                    subgraph=target_subgraph_obj,
-                    array_keys_mapping=target.array_keys_mapping,
-                    is_subgraph_node=target_subgraph_obj is not None
+                    defaults={
+                        'is_terminal': target.is_term_state,
+                        'subgraph': target_subgraph_obj,
+                        'array_keys_mapping': target.array_keys_mapping,
+                        'is_subgraph_node': target_subgraph_obj is not None
+                    }
                 )
+
+                # Обновляем подграф если состояние уже существовало
+                if not created and target_state.subgraph != target_subgraph_obj:
+                    target_state.subgraph = target_subgraph_obj
+                    target_state.is_subgraph_node = target_subgraph_obj is not None
+                    target_state.save()
+                    print(f"Обновлен подграф для целевого состояния {target_state.name}")
+
                 state_mapping[target_name] = target_state
                 queue.append(target)
                 print(f"Создано целевое состояние: {target_state.name} (ID: {target_state.id})")
@@ -511,7 +659,6 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
 
     return graph
 
-
 from .events import get_event_service
 from django.http import JsonResponse
 import uuid
@@ -519,44 +666,67 @@ import threading
 
 event_service = get_event_service()
 
+from config.tasks import execute_graph_task
 
 def start_execution(request, graph_id):
     graph = get_object_or_404(Graph, pk=graph_id)
     session_id = str(uuid.uuid4())
 
-    # Создаем временный файл для парсера
-    with tempfile.NamedTemporaryFile(mode='w+', suffix='.adot') as tmp:
-        tmp.write(graph.raw_dot)
-        tmp.seek(0)
+    initial_data = json.loads(request.POST.get('data', '{}'))
+    execute_graph_task.delay(
+        graph.raw_dot,
+        session_id,
+        initial_data
+    )
 
-        parser = Parser()
-        comsdk_graph = parser.parse_file(tmp.name)
 
-        # Добавляем слушателя событий
-        def event_listener(event):
-            print("[EVENT DEBUG]", event)
-            print("[DEBUG] launching run() with:", initial_data)
-            event['session_id'] = session_id
-            event_service.publish(session_id, event)
-            #event_service.notify_local(event)
+    def run_execution():
+        try:
+            with tempfile.NamedTemporaryFile(mode='w+', suffix='.adot') as tmp:
+                tmp.write(graph.raw_dot)
+                tmp.seek(0)
 
-        comsdk_graph.add_listener(event_listener)
+                parser = Parser()
+                comsdk_graph = parser.parse_file(tmp.name)
 
-        # Запускаем выполнение в отдельном потоке
-        initial_data = json.loads(request.POST.get('data', '{}'))
-        initial_data.setdefault("a", 10)
-        thread = threading.Thread(
-            target=comsdk_graph.run,
-            args=(initial_data,),
-            daemon=True
-        )
-        thread.start()
+                def event_listener(event):
+                    event['graph_id'] = parser.fact.name  # Идентификатор графа
+                    event['session_id'] = session_id
+                    event_service.publish(session_id, event)
 
-        return JsonResponse({
-            'session_id': session_id,
-            'status': 'started'
-        })
+                    # Обновляем статус выполнения
+                    if event.get('progress'):
+                        execution_status[session_id]['progress'] = event['progress']
+                    elif event.get('event') == 'complete':
+                        execution_status[session_id]['is_running'] = False
 
+                comsdk_graph.add_listener(event_listener)
+
+                initial_data = json.loads(request.POST.get('data', '{}'))
+                initial_data.setdefault('a', 5)
+                comsdk_graph.run(initial_data)
+
+        except Exception as e:
+            print(f"Ошибка выполнения: {str(e)}")
+            if session_id in execution_status:
+                execution_status[session_id]['is_running'] = False
+                execution_status[session_id]['error'] = str(e)
+            else:
+                print(f"Session {session_id} not found in execution_status")
+
+    execution_status[session_id] = {  # Инициализация состояния
+        'is_running': True,
+        'progress': 0,
+        'error': None
+    }
+
+    # Запускаем в отдельном потоке с демонизацией
+    thread = threading.Thread(target=run_execution, daemon=True)
+    thread.start()
+
+    return JsonResponse({
+        'session_id': session_id,
+    })
 
 def execution_events(request, session_id):
     def event_generator():
@@ -597,12 +767,3 @@ def event_stream(session_id):
     finally:
         # Отписываемся при завершении
         event_service.unsubscribe(session_id, event_handler)
-
-def debug_run(request):
-    from comsdk.parser import Parser
-    parser = Parser()
-    g = parser.parse_file('./tests/test_aDOT/test_adot_files/sequential.adot')  # путь к test adot
-    def log_event(ev): print("[DEBUG EVENT]", ev)
-    g.add_listener(log_event)
-    g.run({"a": 1})
-    return JsonResponse({"status": "ok"})

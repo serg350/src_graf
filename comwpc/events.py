@@ -25,20 +25,27 @@ class ExecutionEventService:
         self.pubsub = self.redis.pubsub()
 
     def subscribe(self, session_id, callback):
-        def listener(message):
-            print("[REDIS RAW MESSAGE]", message)
-            if message['type'] == 'message':
-                try:
-                    event = json.loads(message['data'])
-                    callback(event)
-                except json.JSONDecodeError:
-                    print("Ошибка декодирования события")
+        try:
+            # Проверяем подключение
+            self.redis.ping()
+        except redis.ConnectionError:
+            self._reconnect()
 
-        self.pubsub.subscribe(**{f'execution:{session_id}': listener})
-        thread = threading.Thread(target=self.pubsub.run_in_thread, daemon=True)
+        # Используем отдельное подключение для каждого подписчика
+        pubsub = self.redis.pubsub()
+        pubsub.subscribe(f'execution:{session_id}')
+
+        def listener():
+            for message in pubsub.listen():
+                if message['type'] == 'message':
+                    try:
+                        event = json.loads(message['data'])
+                        callback(event)
+                    except json.JSONDecodeError:
+                        print("Ошибка декодирования события")
+
+        thread = threading.Thread(target=listener, daemon=True)
         thread.start()
-        print(f"[REDIS SUBSCRIBED] execution:{session_id}")
-
 
     def unsubscribe(self, session_id, handler):
         if session_id in self.local_listeners:
