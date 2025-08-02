@@ -3,29 +3,33 @@
 {% block extrahead %}
 {{ block.super }}
 <style>
-    /* MUI-inspired styles */
+    /* Обновленные цвета в стиле Django */
     :root {
-        --primary: #1976d2;
-        --primary-light: #42a5f5;
-        --secondary: #9c27b0;
-        --error: #d32f2f;
-        --text-primary: rgba(0, 0, 0, 0.87);
-        --text-secondary: rgba(0, 0, 0, 0.6);
-        --divider: rgba(0, 0, 0, 0.12);
-        --background: #f5f5f5;
-        --surface: #ffffff;
+        --primary: #417690;  /* Основной синий Django */
+        --primary-light: #79aec8;  /* Светлый синий Django */
+        --secondary: #5b80a2;  /* Дополнительный синий */
+        --error: #ba2121;  /* Красный Django */
+        --success: #5cb85c;  /* Зеленый для успешных операций */
+        --text-primary: #333;  /* Основной текст */
+        --text-secondary: #666;  /* Вторичный текст */
+        --divider: #ddd;  /* Разделители */
+        --background: #f8f8f8;  /* Фон страницы */
+        --surface: #fff;  /* Поверхности элементов */
+        --node-bg: #f0f7ff;  /* Фон узлов */
+        --terminal-bg: #e7f5e9;  /* Фон терминальных узлов */
+        --subgraph-bg: #fff4e5;  /* Фон подграфов */
     }
 
     body {
         background-color: var(--background);
-        font-family: 'Roboto', 'Helvetica', 'Arial', sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         color: var(--text-primary);
     }
 
     .container {
         display: flex;
         flex-direction: column;
-        max-width: 1400px;
+        max-width: 1800px;
         margin: 0 auto;
         padding: 20px;
         gap: 20px;
@@ -38,50 +42,53 @@
         padding: 16px;
         background-color: var(--surface);
         border-radius: 4px;
-        box-shadow: 0px 2px 1px -1px rgba(0,0,0,0.2),
-                    0px 1px 1px 0px rgba(0,0,0,0.14),
-                    0px 1px 3px 0px rgba(0,0,0,0.12);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        border: 1px solid var(--divider);
     }
 
     .graph-title {
         font-size: 1.5rem;
         font-weight: 500;
-        color: var(--text-primary);
+        color: var(--primary);
+        margin: 0;
     }
 
     .graph-container {
         display: flex;
         gap: 20px;
+        height: 70vh;
     }
 
     .graph-svg-container {
         flex: 3;
         background-color: var(--surface);
         border-radius: 4px;
-        box-shadow: 0px 2px 1px -1px rgba(0,0,0,0.2),
-                    0px 1px 1px 0px rgba(0,0,0,0.14),
-                    0px 1px 3px 0px rgba(0,0,0,0.12);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         overflow: auto;
-        min-height: 600px;
+        border: 1px solid var(--divider);
         padding: 16px;
+        height: 100%;
     }
 
     .graph-data-container {
         flex: 2;
         background-color: var(--surface);
         border-radius: 4px;
-        box-shadow: 0px 2px 1px -1px rgba(0,0,0,0.2),
-                    0px 1px 1px 0px rgba(0,0,0,0.14),
-                    0px 1px 3px 0px rgba(0,0,0,0.12);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         padding: 16px;
+        border: 1px solid var(--divider);
+        display: flex;
+        flex-direction: column;
+        height: 100%;
     }
 
     .data-section-title {
         font-size: 1.25rem;
         font-weight: 500;
-        margin-bottom: 16px;
+        margin: 0 0 16px 0;
         padding-bottom: 8px;
         border-bottom: 1px solid var(--divider);
+        color: var(--primary);
     }
 
     .execution-controls {
@@ -90,10 +97,9 @@
         gap: 16px;
         background-color: var(--surface);
         border-radius: 4px;
-        box-shadow: 0px 2px 1px -1px rgba(0,0,0,0.2),
-                    0px 1px 1px 0px rgba(0,0,0,0.14),
-                    0px 1px 3px 0px rgba(0,0,0,0.12);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         padding: 16px;
+        border: 1px solid var(--divider);
     }
 
     .controls-row {
@@ -123,24 +129,16 @@
         min-width: 64px;
         padding: 6px 16px;
         border-radius: 4px;
-        transition: background-color 250ms cubic-bezier(0.4, 0, 0.2, 1) 0ms,
-                    box-shadow 250ms cubic-bezier(0.4, 0, 0.2, 1) 0ms,
-                    border-color 250ms cubic-bezier(0.4, 0, 0.2, 1) 0ms;
+        transition: all 0.2s ease;
     }
 
     .mui-button.primary {
         color: #fff;
         background-color: var(--primary);
-        box-shadow: 0px 3px 1px -2px rgba(0,0,0,0.2),
-                    0px 2px 2px 0px rgba(0,0,0,0.14),
-                    0px 1px 5px 0px rgba(0,0,0,0.12);
     }
 
     .mui-button.primary:hover {
         background-color: var(--primary-light);
-        box-shadow: 0px 2px 4px -1px rgba(0,0,0,0.2),
-                    0px 4px 5px 0px rgba(0,0,0,0.14),
-                    0px 1px 10px 0px rgba(0,0,0,0.12);
     }
 
     .mui-button.secondary {
@@ -151,7 +149,6 @@
     .mui-button:disabled {
         color: rgba(0, 0, 0, 0.26);
         background-color: rgba(0, 0, 0, 0.12);
-        box-shadow: none;
         cursor: default;
         pointer-events: none;
     }
@@ -159,7 +156,7 @@
     .progress-container {
         width: 100%;
         height: 8px;
-        background-color: rgba(0, 0, 0, 0.12);
+        background-color: rgba(0, 0, 0, 0.08);
         border-radius: 4px;
         overflow: hidden;
     }
@@ -171,21 +168,32 @@
         transition: width 0.3s ease;
     }
 
+    .states-table-container {
+        flex: 1;
+        overflow-y: auto;
+        border: 1px solid var(--divider);
+        border-radius: 4px;
+    }
+
     .states-table {
         width: 100%;
         border-collapse: collapse;
+        font-size: 0.9rem;
     }
 
     .states-table th {
         text-align: left;
-        padding: 12px 16px;
-        font-weight: 500;
+        padding: 10px 12px;
+        font-weight: 600;
         color: var(--text-secondary);
         border-bottom: 1px solid var(--divider);
+        background-color: #f5f5f5;
+        position: sticky;
+        top: 0;
     }
 
     .states-table td {
-        padding: 12px 16px;
+        padding: 10px 12px;
         border-bottom: 1px solid var(--divider);
     }
 
@@ -193,8 +201,9 @@
         border-bottom: none;
     }
 
-    .states-table tr.active {
-        background-color: rgba(25, 118, 210, 0.08);
+    .states-table tr.highlighted {
+        background-color: rgba(65, 118, 144, 0.1);
+        border-left: 3px solid var(--primary);
     }
 
     /* SVG Styles */
@@ -203,21 +212,52 @@
         height: 100%;
     }
 
-    .node polygon, .node ellipse {
-        fill: #e3f2fd;
+    .node rect {
+        fill: var(--node-bg);
         stroke: var(--primary);
-        stroke-width: 2px;
+        stroke-width: 1.5px;
+        rx: 6px;
+        ry: 6px;
+        transition: all 0.3s ease;
     }
 
     .node text {
-        font-family: 'Roboto', sans-serif;
-        font-size: 14px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-size: 12px;
         fill: var(--text-primary);
+    }
+
+    .node:hover rect {
+        stroke: var(--primary-light);
+        stroke-width: 2px;
+    }
+
+    /* Терминальные узлы */
+    .terminal-node rect {
+        fill: var(--terminal-bg);
+        stroke: var(--success);
+    }
+
+    /* Узлы с подграфами */
+    .subgraph-node rect {
+        fill: var(--subgraph-bg);
+        stroke: #e67e22;
+    }
+
+    .state-active rect {
+        stroke: #e74c3c;
+        stroke-width: 2.5px;
+        animation: pulse 1.5s infinite;
+    }
+
+    .state-active text {
+        font-weight: bold;
+        fill: #e74c3c;
     }
 
     .edge path {
         stroke: var(--text-secondary);
-        stroke-width: 2px;
+        stroke-width: 1.5px;
         fill: none;
     }
 
@@ -227,41 +267,89 @@
     }
 
     .edge text {
-        font-family: 'Roboto', sans-serif;
-        font-size: 12px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-size: 11px;
         fill: var(--text-secondary);
     }
 
-    .state-active > polygon, .state-active > ellipse {
-        stroke: #ff5722;
-        stroke-width: 3px;
-        filter: drop-shadow(0 0 8px rgba(255, 87, 34, 0.7));
-        animation: pulse 1.5s infinite;
-    }
-
-    .state-active > text {
-        font-weight: bold;
-        fill: #ff5722;
-    }
-
     @keyframes pulse {
-        0% { stroke-width: 3px; }
-        50% { stroke-width: 5px; }
-        100% { stroke-width: 3px; }
+        0% { stroke-width: 2.5px; }
+        50% { stroke-width: 3.5px; }
+        100% { stroke-width: 2.5px; }
+    }
+
+    /* Модальное окно для подграфов */
+    .subgraph-modal {
+        display: none;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 90%;
+        height: 90%;
+        background: white;
+        z-index: 10000;
+        border: 1px solid var(--divider);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        border-radius: 4px;
+        overflow: hidden;
+    }
+
+    .modal-header {
+        padding: 15px 20px;
+        background-color: var(--primary);
+        color: white;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .modal-title {
+        margin: 0;
+        font-size: 1.2rem;
+    }
+
+    .close-modal {
+        font-size: 1.5rem;
+        cursor: pointer;
+        background: none;
+        border: none;
+        color: white;
+    }
+
+    .modal-content {
+        padding: 20px;
+        height: calc(100% - 60px);
+        overflow: auto;
+    }
+
+    .modal-backdrop {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 9999;
     }
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 {% endblock %}
 
 {% block content %}
 <div class="container">
+    {% if is_main_graph %}
     <div class="graph-header">
         <h1 class="graph-title">{{ graph.name }}</h1>
         <a href="{% url 'admin:comwpc_graph_change' graph.id %}" class="mui-button secondary">
-            Вернуться к редактированию
+            <i class="fas fa-edit"></i> Вернуться к редактированию
         </a>
     </div>
+    {% endif %}
 
+    {% if is_main_graph %}
     <div class="execution-controls">
         <div class="controls-row">
             <button id="btn-start" class="mui-button primary">
@@ -275,54 +363,326 @@
             <div id="execution-progress" class="progress-bar" style="width: 0%"></div>
         </div>
     </div>
+    {% endif %}
 
+    {% if is_main_graph %}
     <div class="graph-container">
         <div class="graph-svg-container">
             {{ svg_content|safe }}
         </div>
 
         <div class="graph-data-container">
-            <h2 class="data-section-title">Состояния выполнения</h2>
-            <table class="states-table" id="states-table">
-                <thead>
-                    <tr>
-                        <th>Состояние</th>
-                        <th>Данные</th>
-                    </tr>
-                </thead>
-                <tbody id="states-body">
-                    <!-- Will be populated by JavaScript -->
-                </tbody>
-            </table>
+            <h2 class="data-section-title">История выполнения</h2>
+            <div class="states-table-container">
+                <table class="states-table" id="states-table">
+                    <thead>
+                        <tr>
+                            <th>Граф</th>
+                            <th>Состояние</th>
+                            <th>Данные</th>
+                        </tr>
+                    </thead>
+                    <tbody id="states-body">
+                        <!-- Will be populated by JavaScript -->
+                    </tbody>
+                </table>
+
+            </div>
         </div>
     </div>
+    {% endif %}
 </div>
+
+<!-- Модальное окно для подграфов -->
+<div id="subgraph-modal" class="subgraph-modal">
+    <div class="modal-header">
+        <h3 class="modal-title">Подграф</h3>
+        <button class="close-modal" onclick="closeSubgraph()">&times;</button>
+    </div>
+    <div class="modal-content" id="subgraph-content"></div>
+</div>
+
+<div id="modal-backdrop" class="modal-backdrop"></div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const sessionId = "{{ execution_session|default_if_none:'' }}";
     const statesBody = document.getElementById('states-body');
     let executionCompleted = false;
+    let currentGraphName = "{{ graph.name }}";
+    let currentSubgraph = null;
 
-    // Функция для добавления состояния в таблицу
-    function addStateToTable(state, data) {
+    class FilteredEventSource {
+        constructor(url) {
+            this.url = url;
+            this.filters = [];
+            this.listeners = [];
+            this.source = new EventSource(url);
+            this.source.onmessage = this.handleMessage.bind(this);
+        }
+
+        addFilter(filterFn) {
+            this.filters.push(filterFn);
+        }
+
+        addListener(listener) {
+            this.listeners.push(listener);
+        }
+
+        handleMessage(event) {
+            const data = JSON.parse(event.data);
+            // Применяем все фильтры
+            if (this.filters.some(filter => filter(data))) {
+                this.listeners.forEach(listener => listener(data));
+            }
+        }
+    }
+
+    // Создаем FilteredEventSource вместо обычного EventSource
+    let eventSource = null;
+    if (sessionId) {
+        eventSource = new FilteredEventSource(`/execution/events/${sessionId}/`);
+
+        // Фильтр по умолчанию - только события для текущего графа
+        eventSource.addFilter(event =>
+            event.graph_id === currentGraphName
+        );
+
+        eventSource.addListener(function(data) {
+            try {
+                console.log("Received event:", data);
+
+                if (data.progress) {
+                    document.getElementById('execution-progress').style.width = `${data.progress}%`;
+                }
+
+                // Фильтр для основного графа
+                if (data.graph_id === currentGraphName) {
+                    switch(data.event) {
+                        case 'state_enter':
+                            addStateToTable(data.state, data.data, data.timestamp, data.graph_id);
+                            highlightState(data.state, true);
+                            break;
+                        case 'state_exit':
+                            highlightState(data.state, false);
+                            break;
+                        case 'complete':
+                            handleExecutionComplete(data);
+                            eventSource = null;
+                            break;
+                    }
+                }
+
+                // Фильтр для подграфа
+                if (currentSubgraph && data.graph_id === currentSubgraph.name) {
+                    switch(data.event) {
+                        case 'state_enter':
+                            addStateToSubgraphTable(data.state, data.data, data.timestamp);
+                            highlightState(data.state, true);
+                            break;
+                        case 'state_exit':
+                            highlightState(data.state, false);
+                            break;
+                    }
+                }
+            } catch (error) {
+                console.error("Error processing event:", error);
+            }
+        });
+    }
+
+    function addStateToTable(state, data, eventTime, graphId) {
+        // Проверяем, нет ли уже такого состояния в таблице
+        const existingRow = document.querySelector(`#states-body tr[data-state="${state}"][data-graph="${graphId}"]`);
+        if (existingRow) {
+            return existingRow;
+        }
+
         const row = document.createElement('tr');
-        row.className = 'active';
+        row.dataset.state = state;
+        row.dataset.time = eventTime;
+        row.dataset.graph = graphId;
+
+        const graphCell = document.createElement('td');
+        graphCell.textContent = graphId;
 
         const stateCell = document.createElement('td');
         stateCell.textContent = state;
         stateCell.style.fontWeight = '500';
 
         const dataCell = document.createElement('td');
-        dataCell.textContent = JSON.stringify(data, null, 2);
+        dataCell.textContent = formatDataForDisplay(data);
 
+        row.appendChild(graphCell);
         row.appendChild(stateCell);
         row.appendChild(dataCell);
         statesBody.appendChild(row);
 
+        // Сохраняем связь состояния с элементом строки
+        stateRowMap.set(state, row);
+
+        // Добавляем обработчик для строки таблицы
+        row.addEventListener('click', () => {
+            highlightState(state, true);
+            centerNodeInView(state);
+        });
+
         // Прокрутка к последнему элементу
-        row.scrollIntoView({behavior: 'smooth'});
+        row.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+        return row;
     }
+
+    // Функция для добавления состояния в таблицу подграфа
+    function addStateToSubgraphTable(state, data, eventTime) {
+        const tableBody = document.querySelector('#subgraph-states-body');
+        if (!tableBody) return;
+
+        const row = document.createElement('tr');
+        row.dataset.state = state;
+        row.dataset.time = eventTime;
+
+        const stateCell = document.createElement('td');
+        stateCell.textContent = state;
+        stateCell.style.fontWeight = '500';
+
+        const dataCell = document.createElement('td');
+        dataCell.textContent = formatDataForDisplay(data);
+
+        row.appendChild(stateCell);
+        row.appendChild(dataCell);
+        tableBody.appendChild(row);
+
+        // Прокрутка к последнему элементу
+        row.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+    }
+
+    // Карта для связи узлов графа с записями в таблице
+    const stateRowMap = new Map();
+    const subgraphStateRowMap = new Map();
+
+    // Функция для добавления состояния в таблицу
+    // Функция добавления состояния в таблицу подграфа
+    function addStateToSubgraphTable(state, data, eventTime) {
+        const tableBody = document.querySelector('#subgraph-states-body');
+        if (!tableBody) return;
+
+        // Проверка на дублирование
+        const existingRow = tableBody.querySelector(`tr[data-state="${state}"]`);
+        if (existingRow) return existingRow;
+
+        const row = document.createElement('tr');
+        row.dataset.state = state;
+        row.dataset.time = eventTime;
+
+        const stateCell = document.createElement('td');
+        stateCell.textContent = state;
+        stateCell.style.fontWeight = '500';
+
+        const dataCell = document.createElement('td');
+        dataCell.textContent = formatDataForDisplay(data);
+
+        row.appendChild(stateCell);
+        row.appendChild(dataCell);
+        tableBody.appendChild(row);
+
+        // Сохраняем связь для подсветки
+        subgraphStateRowMap.set(state, row);
+
+        // Прокрутка к последнему элементу
+        row.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+        return row;
+    }
+
+    // Функция для форматирования данных
+    function formatDataForDisplay(data) {
+        if (!data) return 'Нет данных';
+
+        // Убираем системные поля
+        const filteredData = {};
+        for (const key in data) {
+            if (!key.startsWith('__')) {
+                filteredData[key] = data[key];
+            }
+        }
+
+        if (Object.keys(filteredData).length === 0) return 'Нет данных';
+
+        return JSON.stringify(filteredData, null, 2);
+    }
+
+     window.openSubgraph = function(graphId) {
+        const modal = document.getElementById('subgraph-modal');
+        const content = document.getElementById('subgraph-content');
+
+        // Сброс предыдущего подграфа
+        currentSubgraph = null;
+        subgraphStateRowMap.clear();
+
+        const graphName = `Subgraph_${graphId}`;
+        currentSubgraph = {id: graphId, name: graphName};
+
+        if (modal.dataset.currentGraph === String(graphId) && modal.style.display === 'block') {
+            return;
+        }
+
+        modal.dataset.currentGraph = graphId;
+        content.innerHTML = '<div style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i> Загрузка...</div>';
+        modal.style.display = 'block';
+        document.getElementById('modal-backdrop').style.display = 'block';
+
+        // Загружаем SVG асинхронно
+        fetch(`/graph-svg/${graphId}/`)
+            .then(response => {
+                if (!response.ok) throw new Error("Ошибка загрузки подграфа");
+                return response.text();
+            })
+            .then(svg => {
+                content.innerHTML = `
+                    <div class="graph-svg-container" style="height:70%">
+                        ${svg}
+                    </div>
+                    <div class="graph-data-container" style="height:30%">
+                        <h2 class="data-section-title">История выполнения</h2>
+                        <div class="states-table-container">
+                            <table class="states-table">
+                                <thead>
+                                    <tr>
+                                        <th>Состояние</th>
+                                        <th>Данные</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="subgraph-states-body">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+
+                initSubgraphEventHandlers();
+
+                const svgElement = content.querySelector('svg');
+                if (svgElement) {
+                    const graphName = svgElement.getAttribute('data-graph-name');
+                    currentSubgraph = {
+                        id: graphId,
+                        name: graphName
+                    };
+                }
+            })
+            .catch(error => {
+                console.error("Ошибка загрузки подграфа:", error);
+                content.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: var(--error);">
+                        <i class="fas fa-exclamation-triangle"></i> ${error.message}
+                    </div>
+                `;
+            });
+    };
+
+    window.closeSubgraph = function() {
+        document.getElementById('subgraph-modal').style.display = 'none';
+        document.getElementById('modal-backdrop').style.display = 'none';
+    };
 
     // Функция для обработки завершения выполнения
     function handleExecutionComplete(data) {
@@ -334,11 +694,197 @@ document.addEventListener('DOMContentLoaded', function() {
         // Добавляем сообщение о завершении
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td colspan="2" style="color: #2E7D32; font-weight: 500;">
+            <td colspan="2" style="color: var(--success); font-weight: 500;">
                 <i class="fas fa-check-circle"></i> Выполнение завершено
             </td>
         `;
         statesBody.appendChild(row);
+    }
+
+    // Функция подсветки состояния
+    function highlightState(stateName, isActive) {
+        // Сброс предыдущей подсветки
+        document.querySelectorAll('.state-active').forEach(el => {
+            el.classList.remove('state-active');
+        });
+
+        // Сброс подсветки в таблице
+        document.querySelectorAll('#states-table tbody tr.highlighted').forEach(row => {
+            row.classList.remove('highlighted');
+        });
+
+        const nodes = document.querySelectorAll(`[data-name="${stateName}"]`);
+        if (nodes.length > 0) {
+            nodes.forEach(node => {
+                if (isActive) {
+                    node.classList.add('state-active');
+                }
+            });
+
+            // Подсветка соответствующей строки в таблице
+            if (stateRowMap.has(stateName)) {
+                stateRowMap.get(stateName).classList.add('highlighted');
+            }
+        }
+    }
+
+    // Функция центрирования узла в области просмотра
+    function centerNodeInView(stateName) {
+        const node = document.querySelector(`[data-name="${stateName}"]`);
+        if (node) {
+            const svgContainer = document.querySelector('.graph-svg-container');
+            const nodeRect = node.getBoundingClientRect();
+            const containerRect = svgContainer.getBoundingClientRect();
+
+            const centerX = nodeRect.left - containerRect.left + nodeRect.width/2 - containerRect.width/2;
+            const centerY = nodeRect.top - containerRect.top + nodeRect.height/2 - containerRect.height/2;
+
+            svgContainer.scrollTo({
+                top: centerY,
+                left: centerX,
+                behavior: 'smooth'
+            });
+        }
+    }
+
+    // Функция для включения зума (перенесена из SVG)
+    function enableZoom(svgElement) {
+        let viewBox = svgElement.viewBox.baseVal;
+        let width = viewBox.width;
+        let height = viewBox.height;
+
+        svgElement.addEventListener('wheel', function(e) {
+            e.preventDefault();
+
+            let zoom = e.deltaY > 0 ? 1.1 : 0.9;
+            let mouseX = e.clientX - svgElement.getBoundingClientRect().left;
+            let mouseY = e.clientY - svgElement.getBoundingClientRect().top;
+
+            let newWidth = viewBox.width * zoom;
+            let newHeight = viewBox.height * zoom;
+
+            // Ограничиваем масштабирование
+            if (newWidth < width/10 || newWidth > width*10) return;
+
+            let newX = viewBox.x - (mouseX / svgElement.clientWidth) * (newWidth - viewBox.width);
+            let newY = viewBox.y - (mouseY / svgElement.clientHeight) * (newHeight - viewBox.height);
+
+            viewBox.x = newX;
+            viewBox.y = newY;
+            viewBox.width = newWidth;
+            viewBox.height = newHeight;
+        });
+
+        svgElement.addEventListener('dblclick', function(e) {
+            e.preventDefault();
+            viewBox.x = 0;
+            viewBox.y = 0;
+            viewBox.width = width;
+            viewBox.height = height;
+        });
+    }
+
+    // Инициализация зума для основного графа
+    document.addEventListener('DOMContentLoaded', function() {
+        const mainSvg = document.querySelector('.graph-svg-container svg');
+        if (mainSvg) {
+            enableZoom(mainSvg);
+        }
+    });
+    // Инициализируем обработчики для подграфа
+    function initSubgraphEventHandlers() {
+        document.querySelectorAll('#subgraph-modal .node').forEach(node => {
+            node.addEventListener('click', function() {
+                const stateName = this.dataset.name;
+                highlightState(stateName, true);
+            });
+        });
+    }
+
+    // Инициализация обработчиков событий для загруженного контента
+    function initEventHandlers(container) {
+        // Обработчики для узлов графа
+        container.querySelectorAll('.node').forEach(node => {
+            node.addEventListener('click', function() {
+                const stateName = this.dataset.name;
+                if (stateName) {
+                    highlightState(stateName, true);
+
+                    // Найти и подсветить соответствующую строку в таблице
+                    if (stateRowMap.has(stateName)) {
+                        const row = stateRowMap.get(stateName);
+                        row.classList.add('highlighted');
+                        row.scrollIntoView({behavior: 'smooth', block: 'center'});
+                    }
+                }
+            });
+        });
+
+        // Обработчики для кнопок запуска
+        container.querySelector('#btn-start')?.addEventListener('click', startExecution);
+    }
+
+    function closeSubgraph() {
+        document.getElementById('subgraph-modal').style.display = 'none';
+        document.getElementById('modal-backdrop').style.display = 'none';
+    }
+
+    // Функция запуска выполнения
+    function startExecution() {
+        const btnStart = document.getElementById('btn-start');
+        btnStart.disabled = true;
+        document.getElementById('btn-pause').disabled = false;
+        document.getElementById('execution-progress').style.width = '0%';
+
+        // Сброс состояния таблицы
+        statesBody.innerHTML = '';
+        stateRowMap.clear();
+
+        // Добавляем сообщение о начале выполнения
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td colspan="2" style="color: var(--primary);">
+                <i class="fas fa-play-circle"></i> Выполнение запущено...
+            </td>
+        `;
+        statesBody.appendChild(row);
+
+        // Запуск выполнения на сервере
+        fetch(`/graph/{{ graph.id }}/start/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                data: {},
+                graph_id: currentGraphName
+            })
+        })
+        .then(response => {
+            if (!response.ok) throw new Error(`Ошибка сервера: ${response.status}`);
+            return response.json();
+        })
+        .then(result => {
+            // Обновляем страницу с новым session_id
+            const url = new URL(window.location.href);
+            url.searchParams.set('session', result.session_id);
+            window.location.href = url.toString();
+        })
+        .catch(error => {
+            console.error('Ошибка при запуске выполнения:', error);
+
+            // Добавляем сообщение об ошибке
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td colspan="2" style="color: var(--error);">
+                    <i class="fas fa-exclamation-circle"></i> ${error.message}
+                </td>
+            `;
+            statesBody.appendChild(row);
+
+            btnStart.disabled = false;
+        });
     }
 
     // Создаем EventSource для получения событий
@@ -350,10 +896,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 const data = JSON.parse(event.data);
                 console.log("Received event:", data);
 
+                if (data.progress) {
+                    document.getElementById('execution-progress').style.width = `${data.progress}%`;
+                }
+
                 switch(data.event) {
                     case 'state_enter':
-                        addStateToTable(data.state, data.data);
+                        const row = addStateToTable(data.state, data.data, data.timestamp);
                         highlightState(data.state, true);
+
+                        // Если модальное окно подграфа открыто, обновляем подсветку
+                        if (document.getElementById('subgraph-modal').style.display === 'block') {
+                            const subgraphContent = document.querySelector('#subgraph-content .node[data-name="${data.state}"]');
+                            if (subgraphContent) {
+                                subgraphContent.classList.add('state-active');
+                            }
+                        }
                         break;
 
                     case 'state_exit':
@@ -375,7 +933,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!executionCompleted) {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td colspan="2" style="color: #D32F2F;">
+                    <td colspan="2" style="color: var(--error);">
                         <i class="fas fa-exclamation-triangle"></i> Ошибка соединения
                     </td>
                 `;
@@ -385,83 +943,38 @@ document.addEventListener('DOMContentLoaded', function() {
         };
     }
 
-    // Функция подсветки состояния
-    function highlightState(stateName, isActive) {
-        const nodes = document.querySelectorAll(`[data-name="${stateName}"]`);
-        nodes.forEach(node => {
-            if (isActive) {
-                node.classList.add('state-active');
-                // Плавная прокрутка к активному узлу
-                const rect = node.getBoundingClientRect();
-                const svgContainer = document.querySelector('.graph-svg-container');
-                const scrollTop = svgContainer.scrollTop;
-                const scrollLeft = svgContainer.scrollLeft;
-                const centerX = rect.left + rect.width/2 - svgContainer.clientWidth/2;
-                const centerY = rect.top + rect.height/2 - svgContainer.clientHeight/2;
 
-                svgContainer.scrollTo({
-                    top: scrollTop + centerY,
-                    left: scrollLeft + centerX,
-                    behavior: 'smooth'
-                });
-            } else {
-                node.classList.remove('state-active');
+    // Добавляем обработчики кликов на узлы графа
+    document.querySelectorAll('.node').forEach(node => {
+        node.addEventListener('click', function() {
+            const stateName = this.dataset.name;
+            if (stateName) {
+                // Подсветить состояние
+                highlightState(stateName, true);
+
+                // Найти и подсветить соответствующую строку в таблице
+                if (stateRowMap.has(stateName)) {
+                    const row = stateRowMap.get(stateName);
+                    row.classList.add('highlighted');
+                    row.scrollIntoView({behavior: 'smooth', block: 'center'});
+                }
             }
         });
-    }
-
-    // Запуск выполнения
-    document.getElementById('btn-start').addEventListener('click', async function() {
-        try {
-            // Сброс состояния
-            statesBody.innerHTML = '';
-            executionCompleted = false;
-            this.disabled = true;
-            document.getElementById('btn-pause').disabled = false;
-            document.getElementById('execution-progress').style.width = '0%';
-
-            // Добавляем сообщение о начале выполнения
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td colspan="2" style="color: #1976D2;">
-                    <i class="fas fa-play-circle"></i> Выполнение запущено...
-                </td>
-            `;
-            statesBody.appendChild(row);
-
-            // Запуск выполнения на сервере
-            const response = await fetch(`/graph/{{ graph.id }}/start/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCookie('csrftoken')
-                },
-                body: JSON.stringify({data: {}})
-            });
-
-            if (!response.ok) throw new Error(`Server error: ${response.status}`);
-
-            const result = await response.json();
-            // Обновляем страницу с новым session_id
-            window.location.href = `?session=${result.session_id}`;
-
-        } catch (error) {
-            console.error('Ошибка при запуске выполнения:', error);
-
-            // Добавляем сообщение об ошибке
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td colspan="2" style="color: #D32F2F;">
-                    <i class="fas fa-exclamation-circle"></i> ${error.message}
-                </td>
-            `;
-            statesBody.appendChild(row);
-
-            document.getElementById('btn-start').disabled = false;
-        }
     });
 
-    // Helper functions
+    // Обработчики для кнопок запуска
+    document.getElementById('btn-start').addEventListener('click', startExecution);
+
+    document.querySelector('.close-modal').addEventListener('click', function() {
+        document.getElementById('subgraph-modal').style.display = 'none';
+        document.getElementById('modal-backdrop').style.display = 'none';
+    });
+
+    document.getElementById('modal-backdrop').addEventListener('click', function() {
+        document.getElementById('subgraph-modal').style.display = 'none';
+        this.style.display = 'none';
+    });
+
     function getCookie(name) {
         let cookieValue = null;
         if (document.cookie && document.cookie !== '') {
@@ -475,13 +988,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         return cookieValue;
-    }
-
-    function collectInitialData() {
-        const initialData = {};
-        // Здесь можно добавить сбор начальных данных при необходимости
-        initialData['a'] = 0; // Пример начального значения
-        return initialData;
     }
 });
 </script>

@@ -14,14 +14,16 @@ urlpatterns = [
     path('graph-visualization/<int:graph_id>/',
          views.graph_interactive_view,
          name='graph_visualization'),
+    path('graph-svg/<int:graph_id>/',
+         views.graph_svg_view,  # Добавленный view
+         name='graph_svg'),
     path('graph-visualization/<int:graph_id>/content/',
          views.graph_interactive_content,
          name='graph_content'),
     path('graph/<int:graph_id>/start/', views.start_execution, name='start-execution'),
     path('execution/events/<str:session_id>/', views.execution_events, name='execution-events'),
     path('graph/<int:graph_id>/visualize/', views.graph_interactive_view, name='graph-visualization'),
-    path('debug-run/', views.debug_run, name='debug-run-visualization'),
-]
+    ]
 
 urlpatterns += static(
         settings.STATIC_URL, document_root=settings.STATIC_ROOT

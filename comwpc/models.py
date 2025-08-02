@@ -1,11 +1,19 @@
 from django.db import models
 
 class Graph(models.Model):
-    name = models.CharField(max_length=255, unique=True)
+    name = models.CharField(max_length=255)
     created_at = models.DateTimeField(auto_now_add=True)
     parent_graph = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='subgraphs')
     is_subgraph = models.BooleanField(default=False)
     raw_dot = models.TextField(blank=True, null=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['name', 'is_subgraph'],
+                name='unique_graph_name_per_type'
+            )
+        ]
 
     def __str__(self):
         return self.name

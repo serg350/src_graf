@@ -1,7 +1,9 @@
 import collections
 import os
 import time
+import uuid
 from enum import Enum, auto
+from collections import deque
 from functools import partial
 import importlib as imp
 
@@ -86,9 +88,12 @@ class Graph:
     '''
     def __init__(self, init_state,
                  term_state=None,
+                 graph_id=None,
                  ):
         self.init_state = init_state
         self.term_state = term_state
+        self.id = graph_id or str(uuid.uuid4())
+        self.states = []
         if self.term_state is not None:
             self.term_state.is_term_state = True
         self.current_state = None
@@ -115,9 +120,33 @@ class Graph:
             listener({
                 'event': event_type,
                 'state': state.name if state else None,
+                'graph_id': self.id,
                 'timestamp': time.time(),
                 'data': data.copy()
             })
+
+    def collect_states(self):
+        """Рекурсивно собирает все состояния графа и подграфов"""
+        self.states = []
+        queue = deque([self.init_state])
+        visited = set()
+
+        while queue:
+            current = queue.popleft()
+            if current in visited:
+                continue
+            visited.add(current)
+            self.states.append(current)
+
+            # Обрабатываем подграфы
+            if hasattr(current, 'subgraph') and current.subgraph:
+                current.subgraph.collect_states()
+                self.states.extend(current.subgraph.states)
+
+            # Добавляем следующие состояния
+            for transfer in current.transfers:
+                if transfer.output_state not in visited:
+                    queue.append(transfer.output_state)
 
     def run(self, data):
         '''
@@ -132,6 +161,7 @@ class Graph:
         self.init_graph(data)
         cur_state = self.init_state
         implicit_parallelization_info = None
+        self.collect_states()
         while cur_state is not None:
 
 
