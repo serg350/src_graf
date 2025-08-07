@@ -668,61 +668,21 @@ event_service = get_event_service()
 
 from config.tasks import execute_graph_task
 
+
+@login_required
 def start_execution(request, graph_id):
     graph = get_object_or_404(Graph, pk=graph_id)
     session_id = str(uuid.uuid4())
 
     initial_data = json.loads(request.POST.get('data', '{}'))
+    initial_data.setdefault("a", 10)
+
+    # ТОЛЬКО вызов Celery задачи
     execute_graph_task.delay(
         graph.raw_dot,
         session_id,
         initial_data
     )
-
-
-    def run_execution():
-        try:
-            with tempfile.NamedTemporaryFile(mode='w+', suffix='.adot') as tmp:
-                tmp.write(graph.raw_dot)
-                tmp.seek(0)
-
-                parser = Parser()
-                comsdk_graph = parser.parse_file(tmp.name)
-
-                def event_listener(event):
-                    event['graph_id'] = parser.fact.name  # Идентификатор графа
-                    event['session_id'] = session_id
-                    event_service.publish(session_id, event)
-
-                    # Обновляем статус выполнения
-                    if event.get('progress'):
-                        execution_status[session_id]['progress'] = event['progress']
-                    elif event.get('event') == 'complete':
-                        execution_status[session_id]['is_running'] = False
-
-                comsdk_graph.add_listener(event_listener)
-
-                initial_data = json.loads(request.POST.get('data', '{}'))
-                initial_data.setdefault('a', 5)
-                comsdk_graph.run(initial_data)
-
-        except Exception as e:
-            print(f"Ошибка выполнения: {str(e)}")
-            if session_id in execution_status:
-                execution_status[session_id]['is_running'] = False
-                execution_status[session_id]['error'] = str(e)
-            else:
-                print(f"Session {session_id} not found in execution_status")
-
-    execution_status[session_id] = {  # Инициализация состояния
-        'is_running': True,
-        'progress': 0,
-        'error': None
-    }
-
-    # Запускаем в отдельном потоке с демонизацией
-    thread = threading.Thread(target=run_execution, daemon=True)
-    thread.start()
 
     return JsonResponse({
         'session_id': session_id,
