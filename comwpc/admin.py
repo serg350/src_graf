@@ -10,6 +10,10 @@ from django.utils.safestring import mark_safe
 
 from .views import import_dot
 
+admin.site.site_header = "Проект GCD"  # Заголовок в шапке
+admin.site.site_title = "Проект GCD"  # Текст для вкладки браузера
+admin.site.index_title = "Добро пожаловать в панель GCD"  # Заголовок на главной
+
 
 class TransferInline(admin.TabularInline):
     model = Transfer

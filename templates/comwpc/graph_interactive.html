@@ -493,7 +493,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function addStateToTable(state, data, eventTime, graphId) {
         // Проверяем, нет ли уже такого состояния в таблице
-        const existingRow = document.querySelector(`#states-body tr[data-state="${state}"][data-graph="${graphId}"]`);
+        //const existingRow = document.querySelector(`#states-body tr[data-state="${state}"][data-graph="${graphId}"]`);
+        const existingRow = document.querySelector(
+        `#states-body tr[data-state="${state}"][data-time="${eventTime}"][data-graph="${graphId}"]`
+        );
         if (existingRow) {
             return existingRow;
         }
@@ -888,60 +891,60 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Создаем EventSource для получения событий
-    if (sessionId) {
-        const eventSource = new EventSource(`/execution/events/${sessionId}/`);
-
-        eventSource.onmessage = function(event) {
-            try {
-                const data = JSON.parse(event.data);
-                console.log("Received event:", data);
-
-                if (data.progress) {
-                    document.getElementById('execution-progress').style.width = `${data.progress}%`;
-                }
-
-                switch(data.event) {
-                    case 'state_enter':
-                        const row = addStateToTable(data.state, data.data, data.timestamp);
-                        highlightState(data.state, true);
-
-                        // Если модальное окно подграфа открыто, обновляем подсветку
-                        if (document.getElementById('subgraph-modal').style.display === 'block') {
-                            const subgraphContent = document.querySelector('#subgraph-content .node[data-name="${data.state}"]');
-                            if (subgraphContent) {
-                                subgraphContent.classList.add('state-active');
-                            }
-                        }
-                        break;
-
-                    case 'state_exit':
-                        highlightState(data.state, false);
-                        break;
-
-                    case 'complete':
-                        handleExecutionComplete(data);
-                        eventSource.close();
-                        break;
-                }
-            } catch (error) {
-                console.error("Error processing event:", error);
-            }
-        };
-
-        eventSource.onerror = function(error) {
-            console.error("EventSource error:", error);
-            if (!executionCompleted) {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td colspan="2" style="color: var(--error);">
-                        <i class="fas fa-exclamation-triangle"></i> Ошибка соединения
-                    </td>
-                `;
-                statesBody.appendChild(row);
-            }
-            eventSource.close();
-        };
-    }
+    //if (sessionId) {
+    //    const eventSource = new EventSource(`/execution/events/${sessionId}/`);
+//
+    //    eventSource.onmessage = function(event) {
+    //        try {
+    //            const data = JSON.parse(event.data);
+    //            console.log("Received event:", data);
+//
+    //            if (data.progress) {
+    //                document.getElementById('execution-progress').style.width = `${data.progress}%`;
+    //            }
+//
+    //            switch(data.event) {
+    //                case 'state_enter':
+    //                    const row = addStateToTable(data.state, data.data, data.timestamp);
+    //                    highlightState(data.state, true);
+//
+    //                    // Если модальное окно подграфа открыто, обновляем подсветку
+    //                    if (document.getElementById('subgraph-modal').style.display === 'block') {
+    //                        const subgraphContent = document.querySelector('#subgraph-content .node[data-name="${data.state}"]');
+    //                        if (subgraphContent) {
+    //                            subgraphContent.classList.add('state-active');
+    //                        }
+    //                    }
+    //                    break;
+//
+    //                case 'state_exit':
+    //                    highlightState(data.state, false);
+    //                    break;
+//
+    //                case 'complete':
+    //                    handleExecutionComplete(data);
+    //                    eventSource.close();
+    //                    break;
+    //            }
+    //        } catch (error) {
+    //            console.error("Error processing event:", error);
+    //        }
+    //    };
+//
+    //    eventSource.onerror = function(error) {
+    //        console.error("EventSource error:", error);
+    //        if (!executionCompleted) {
+    //            const row = document.createElement('tr');
+    //            row.innerHTML = `
+    //                <td colspan="2" style="color: var(--error);">
+    //                    <i class="fas fa-exclamation-triangle"></i> Ошибка соединения
+    //                </td>
+    //            `;
+    //            statesBody.appendChild(row);
+    //        }
+    //        eventSource.close();
+    //    };
+    //}
 
 
     // Добавляем обработчики кликов на узлы графа
