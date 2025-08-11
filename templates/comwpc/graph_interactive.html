@@ -438,15 +438,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Создаем FilteredEventSource вместо обычного EventSource
     let eventSource = null;
     if (sessionId) {
         eventSource = new FilteredEventSource(`/execution/events/${sessionId}/`);
 
         // Фильтр по умолчанию - только события для текущего графа
-        eventSource.addFilter(event =>
-            event.graph_id === currentGraphName
-        );
+        eventSource.addFilter(event => {
+        // Основной граф или текущий подграф
+            return event.graph_id === currentGraphName ||
+                (currentSubgraph && event.graph_id === currentSubgraph.name);
+        });
 
         eventSource.addListener(function(data) {
             try {
@@ -475,20 +476,40 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 // Фильтр для подграфа
                 if (currentSubgraph && data.graph_id === currentSubgraph.name) {
-                    switch(data.event) {
-                        case 'state_enter':
-                            addStateToSubgraphTable(data.state, data.data, data.timestamp);
-                            highlightState(data.state, true);
-                            break;
-                        case 'state_exit':
-                            highlightState(data.state, false);
-                            break;
-                    }
+                switch(data.event) {
+                    case 'state_enter':
+                        addStateToSubgraphTable(data.state, data.data, data.timestamp);
+                        highlightStateInSubgraph(data.state, true);
+                        break;
+                    case 'state_exit':
+                        highlightStateInSubgraph(data.state, false);
+                        break;
+                }
                 }
             } catch (error) {
                 console.error("Error processing event:", error);
             }
         });
+    }
+
+    function highlightStateInSubgraph(stateName, isActive) {
+    const modalContent = document.getElementById('subgraph-content');
+    if (!modalContent) return;
+
+    // Сброс предыдущей подсветки
+    modalContent.querySelectorAll('.state-active').forEach(el => {
+        el.classList.remove('state-active');
+    });
+
+    // Убираем префикс подграфа из имени состояния
+    const pureStateName = stateName.split('_').pop();
+
+    const nodes = modalContent.querySelectorAll(`[data-name="${pureStateName}"]`);
+    if (nodes.length > 0 && isActive) {
+        nodes.forEach(node => {
+            node.classList.add('state-active');
+        });
+    }
     }
 
     function addStateToTable(state, data, eventTime, graphId) {
@@ -536,49 +557,47 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Функция для добавления состояния в таблицу подграфа
-    function addStateToSubgraphTable(state, data, eventTime) {
-        const tableBody = document.querySelector('#subgraph-states-body');
-        if (!tableBody) return;
-
-        const row = document.createElement('tr');
-        row.dataset.state = state;
-        row.dataset.time = eventTime;
-
-        const stateCell = document.createElement('td');
-        stateCell.textContent = state;
-        stateCell.style.fontWeight = '500';
-
-        const dataCell = document.createElement('td');
-        dataCell.textContent = formatDataForDisplay(data);
-
-        row.appendChild(stateCell);
-        row.appendChild(dataCell);
-        tableBody.appendChild(row);
-
-        // Прокрутка к последнему элементу
-        row.scrollIntoView({behavior: 'smooth', block: 'nearest'});
-    }
+    //function addStateToSubgraphTable(state, data, eventTime) {
+    //    const tableBody = document.querySelector('#subgraph-states-body');
+    //    if (!tableBody) return;
+//
+    //    const row = document.createElement('tr');
+    //    row.dataset.state = state;
+    //    row.dataset.time = eventTime;
+//
+    //    const stateCell = document.createElement('td');
+    //    stateCell.textContent = state;
+    //    stateCell.style.fontWeight = '500';
+//
+    //    const dataCell = document.createElement('td');
+    //    dataCell.textContent = formatDataForDisplay(data);
+//
+    //    row.appendChild(stateCell);
+    //    row.appendChild(dataCell);
+    //    tableBody.appendChild(row);
+//
+    //    // Прокрутка к последнему элементу
+    //    row.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+    //}
 
     // Карта для связи узлов графа с записями в таблице
     const stateRowMap = new Map();
     const subgraphStateRowMap = new Map();
 
-    // Функция для добавления состояния в таблицу
     // Функция добавления состояния в таблицу подграфа
     function addStateToSubgraphTable(state, data, eventTime) {
         const tableBody = document.querySelector('#subgraph-states-body');
         if (!tableBody) return;
 
-        // Проверка на дублирование
-        const existingRow = tableBody.querySelector(`tr[data-state="${state}"]`);
-        if (existingRow) return existingRow;
+        // Убираем префикс подграфа из имени состояния
+        const pureStateName = state.split('_').pop();
 
         const row = document.createElement('tr');
-        row.dataset.state = state;
+        row.dataset.state = pureStateName;
         row.dataset.time = eventTime;
 
         const stateCell = document.createElement('td');
-        stateCell.textContent = state;
+        stateCell.textContent = pureStateName;
         stateCell.style.fontWeight = '500';
 
         const dataCell = document.createElement('td');
@@ -587,9 +606,6 @@ document.addEventListener('DOMContentLoaded', function() {
         row.appendChild(stateCell);
         row.appendChild(dataCell);
         tableBody.appendChild(row);
-
-        // Сохраняем связь для подсветки
-        subgraphStateRowMap.set(state, row);
 
         // Прокрутка к последнему элементу
         row.scrollIntoView({behavior: 'smooth', block: 'nearest'});
@@ -661,8 +677,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                 `;
 
-                initSubgraphEventHandlers();
-
                 const svgElement = content.querySelector('svg');
                 if (svgElement) {
                     const graphName = svgElement.getAttribute('data-graph-name');
@@ -671,6 +685,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         name: graphName
                     };
                 }
+                initSubgraphEventHandlers();
             })
             .catch(error => {
                 console.error("Ошибка загрузки подграфа:", error);
