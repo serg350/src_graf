@@ -47,6 +47,10 @@ def graph_interactive_view(request, graph_id):
         #        'URL': f"javascript:openSubgraph({state.subgraph.id})"
         #    })
         if state.subgraph:
+            base_name = state.subgraph.name
+            if re.match(r'^.*\d+$', base_name):
+                base_name = re.sub(r'\d+$', '', base_name)
+
             dot.node(
                 str(state.id),
                 label=state.name,
@@ -54,7 +58,7 @@ def graph_interactive_view(request, graph_id):
                 color='orange',
                 style='filled',
                 fillcolor='moccasin',
-                URL=f"javascript:openSubgraph({state.subgraph.id})"
+                URL=f"javascript:openSubgraph({state.subgraph.id}, '{base_name}')"
             )
         else:
             color = 'green' if state.is_terminal else 'blue'
@@ -224,6 +228,10 @@ def graph_svg_view(request, graph_id):
     # Добавляем состояния
     for state in graph.state_set.all():
         if state.subgraph:
+            base_name = state.subgraph.name
+            if re.match(r'^.*\d+$', base_name):
+                base_name = re.sub(r'\d+$', '', base_name)
+
             dot.node(
                 str(state.id),
                 label=state.name,
@@ -231,7 +239,7 @@ def graph_svg_view(request, graph_id):
                 color='orange',
                 style='filled',
                 fillcolor='moccasin',
-                URL=f"javascript:openSubgraph({state.subgraph.id})"
+                URL=f"javascript:openSubgraph({state.subgraph.id}, '{base_name}')"
             )
         else:
             color = 'green' if state.is_terminal else 'blue'
