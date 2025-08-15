@@ -10,6 +10,8 @@ from django.utils.safestring import mark_safe
 
 from .views import import_dot
 
+from django.contrib.admin import AdminSite
+
 admin.site.site_header = "Проект GCD"  # Заголовок в шапке
 admin.site.site_title = "Проект GCD"  # Текст для вкладки браузера
 admin.site.index_title = "Добро пожаловать в панель GCD"  # Заголовок на главной

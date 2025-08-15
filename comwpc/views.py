@@ -12,6 +12,7 @@ from django.utils.safestring import mark_safe
 from comwpc.models import Graph
 import graphviz
 from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
+from django.contrib.admin.views.decorators import staff_member_required
 
 from django.contrib.auth.decorators import login_required
 
@@ -20,7 +21,7 @@ from config import settings
 execution_status = {}
 
 
-@login_required
+@staff_member_required
 def graph_interactive_view(request, graph_id):
     graph = get_object_or_404(Graph, pk=graph_id)
     session_id = request.GET.get('session')
@@ -166,7 +167,7 @@ def add_data_attributes(svg_str, graph):
     return re.sub(pattern, add_attributes, svg_str)
 
 
-@login_required
+@staff_member_required
 def graph_interactive_content(request, graph_id):
     """Представление для загрузки только содержимого графа (без шаблона)"""
     graph = get_object_or_404(Graph, pk=graph_id)
@@ -217,7 +218,7 @@ def graph_interactive_content(request, graph_id):
 
 
 # views.py
-@login_required
+@staff_member_required
 def graph_svg_view(request, graph_id):
     graph = get_object_or_404(Graph, pk=graph_id)
     dot = graphviz.Digraph()
@@ -225,7 +226,6 @@ def graph_svg_view(request, graph_id):
     dot.attr(rankdir='TB')
     dot.attr('node', shape='rect', style='rounded,filled', fontname='Roboto')
 
-    # Добавляем состояния
     for state in graph.state_set.all():
         if state.subgraph:
             base_name = state.subgraph.name
@@ -235,11 +235,12 @@ def graph_svg_view(request, graph_id):
             dot.node(
                 str(state.id),
                 label=state.name,
-                shape='folder',
-                color='orange',
-                style='filled',
-                fillcolor='moccasin',
-                URL=f"javascript:openSubgraph({state.subgraph.id}, '{base_name}')"
+                shape='rect',
+                style='rounded,filled',
+                fillcolor='#fff4e5',  # Светло-оранжевый фон
+                color='#e67e22',  # Оранжевая обводка
+                fontcolor='#5d4037',  # Темно-коричневый текст
+                URL=f"javascript:openSubgraph({state.subgraph.id}, 'PREPROCESS')"
             )
         else:
             color = 'green' if state.is_terminal else 'blue'
