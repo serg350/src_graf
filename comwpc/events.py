@@ -1,3 +1,5 @@
+import time
+
 import redis
 from django.conf import settings
 import json
@@ -19,6 +21,7 @@ class ExecutionEventService:
             # Логика повторного подключения
             self._reconnect()
             self.publish(session_id, event)
+
 
     def _reconnect(self):
         self.redis = redis.Redis(**settings.EVENT_REDIS_CONFIG)
