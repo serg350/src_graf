@@ -219,78 +219,43 @@
     }
 
     /* SVG Styles */
+
+    .state-active > polygon,
+    .state-active > ellipse,
+    .state-active > rect,
+    .state-active > path {
+        stroke: #ff5722;
+        stroke-width: 3px;
+        filter: drop-shadow(0 0 4px rgba(255, 87, 34, 0.8));
+    }
+
+    .state-active > text {
+        font-weight: bold;
+        fill: #ff5722;
+    }
+
     .graphviz {
         width: 100%;
         height: 100%;
     }
 
-    .node rect {
-        fill: var(--node-bg);
-        stroke: var(--primary);
-        stroke-width: 1.5px;
-        rx: 6px;
-        ry: 6px;
-        transition: all 0.3s ease;
-    }
+    --
 
-    .node text {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-        font-size: 12px;
-        fill: var(--text-primary);
-    }
-
-    .node:hover rect {
-        stroke: var(--primary-light);
-        stroke-width: 2px;
-    }
-
-    /* Терминальные узлы */
-    .terminal-node rect {
-        fill: var(--terminal-bg);
-        stroke: var(--success);
-    }
-
-    /* Узлы с подграфами */
-    .subgraph-node rect {
-        fill: var(--subgraph-bg);
-        stroke: #e67e22;
-    }
-
-    .state-active rect {
-        stroke: #e74c3c;
-        stroke-width: 2.5px;
-        animation: pulse 1.5s infinite;
-    }
-
-    .state-active text {
-        font-weight: bold;
-        fill: #e74c3c;
-    }
-
-    .edge path {
-        stroke: var(--text-secondary);
-        stroke-width: 1.5px;
-        fill: none;
-    }
-
-    .edge polygon {
-        fill: var(--text-secondary);
-        stroke: var(--text-secondary);
-    }
-
-    .edge text {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-        font-size: 11px;
-        fill: var(--text-secondary);
-    }
-
-    @keyframes pulse {
-        0% { stroke-width: 2.5px; }
-        50% { stroke-width: 3.5px; }
-        100% { stroke-width: 2.5px; }
-    }
 
     /* Модальное окно для подграфов */
+
+
+    .modal-backdrop {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 9999;
+    }
+
     .subgraph-modal {
         display: none;
         position: fixed;
@@ -305,6 +270,7 @@
         box-shadow: 0 5px 15px rgba(0,0,0,0.2);
         border-radius: 4px;
         overflow: hidden;
+        flex-direction: column;
     }
 
     .modal-header {
@@ -314,6 +280,7 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
+        flex-shrink: 0;
     }
 
     .modal-title {
@@ -331,19 +298,128 @@
 
     .modal-content {
         padding: 20px;
-        height: calc(100% - 60px);
-        overflow: auto;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
     }
 
-    .modal-backdrop {
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
+    .resizable-container {
+        display: flex;
+        flex: 1;
+        overflow: hidden;
+        gap: 20px;
+    }
+
+    .resizable-panel {
+        overflow: auto;
+        position: relative;
+    }
+
+    .resizable-left {
+        flex: 3;
+        border: 1px solid var(--divider);
+        border-radius: 4px;
+    }
+
+    .resizable-right {
+        flex: 2;
+        border: 1px solid var(--divider);
+        border-radius: 4px;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .resizer {
+        width: 10px;
+        background: var(--divider);
+        cursor: col-resize;
+        flex-shrink: 0;
+    }
+
+    .states-table-container {
+        flex: 1;
+        overflow-y: auto;
+        border: 1px solid var(--divider);
+        border-radius: 4px;
+    }
+
+    .states-table {
         width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.5);
-        z-index: 9999;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+    }
+
+    .states-table th {
+        text-align: left;
+        padding: 10px 12px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        border-bottom: 1px solid var(--divider);
+        background-color: #f5f5f5;
+        position: sticky;
+        top: 0;
+    }
+
+    .states-table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--divider);
+    }
+
+    .states-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    .states-table tr.highlighted {
+        background-color: rgba(65, 118, 144, 0.1);
+        border-left: 3px solid var(--primary);
+    }
+    .edge-highlight path {
+        stroke: #ff5722 !important;
+        stroke-width: 3px !important;
+        filter: drop-shadow(0 0 4px rgba(255, 87, 34, 0.8));
+    }
+    .edge-highlight polygon {
+        stroke: #ff5722 !important;
+        fill: #ff5722 !important;
+        filter: drop-shadow(0 0 4px rgba(255, 87, 34, 0.8));
+    }
+    .edge-highlight text {
+        fill: #ff5722 !important;
+        font-weight: bold !important;
+    }
+    /* Стили для новых стрелок переходов */
+    .transition-arrow {
+        stroke: #ff5722;
+        stroke-width: 3px;
+        fill: none;
+        marker-end: url(#arrowhead-transition);
+        filter: drop-shadow(0 0 4px rgba(255, 87, 34, 0.8));
+    }
+
+    .transition-label {
+        fill: #ff5722;
+        font-weight: bold;
+        font-size: 14px;
+        background-color: white;
+        padding: 2px 4px;
+        border-radius: 3px;
+    }
+    .edge-highlight path {
+        stroke: #ff5722 !important;
+        stroke-width: 3px !important;
+        filter: drop-shadow(0 0 4px rgba(255, 87, 34, 0.8));
+    }
+
+    .edge-highlight polygon {
+        stroke: #ff5722 !important;
+        fill: #ff5722 !important;
+        filter: drop-shadow(0 0 4px rgba(255, 87, 34, 0.8));
+    }
+
+    .edge-highlight text {
+        fill: #ff5722 !important;
+        font-weight: bold !important;
     }
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
@@ -411,7 +487,30 @@
         <h3 class="modal-title">Подграф</h3>
         <button class="close-modal" onclick="closeSubgraph()">&times;</button>
     </div>
-    <div class="modal-content" id="subgraph-content"></div>
+    <div class="modal-content" id="subgraph-content">
+        <div class="resizable-container">
+            <div class="resizable-panel resizable-left" id="subgraph-svg-container">
+                <!-- SVG будет загружено сюда -->
+            </div>
+            <div class="resizer" id="subgraph-resizer"></div>
+            <div class="resizable-panel resizable-right">
+                <h2 class="data-section-title">История выполнения</h2>
+                <div class="states-table-container">
+                    <table class="states-table">
+                        <thead>
+                            <tr>
+                                <th>Граф</th>
+                                <th>Состояние</th>
+                                <th>Данные</th>
+                            </tr>
+                        </thead>
+                        <tbody id="subgraph-states-body">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <div id="modal-backdrop" class="modal-backdrop"></div>
@@ -425,6 +524,8 @@ document.addEventListener('DOMContentLoaded', function() {
     let currentSubgraph = null;
     let subgraphEvents = {};
     let allEvents = [];
+    let stateHistory = [];
+    let transitions = {};
 
     class FilteredEventSource {
         constructor(url) {
@@ -434,6 +535,7 @@ document.addEventListener('DOMContentLoaded', function() {
             this.source = new EventSource(url);
             this.source.onmessage = this.handleMessage.bind(this);
         }
+
 
         addFilter(filterFn) {
             this.filters.push(filterFn);
@@ -491,24 +593,58 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 // Обработка подграфа
                 if (currentSubgraph && data.state) {
-                    // Проверяем, относится ли событие к текущему подграфу
-                    if (currentSubgraph.statePrefix && data.state.startsWith(currentSubgraph.statePrefix)) {
-                        const pureStateName = data.state.replace(currentSubgraph.statePrefix, '');
-
-                        // Для состояний вида "___END__" корректируем отображение
-                        const displayName = pureStateName.startsWith('__') ? pureStateName.substring(1) : pureStateName;
+                    // Проверяем по регулярному выражению
+                    if (currentSubgraph.prefixRegex && currentSubgraph.prefixRegex.test(data.state)) {
+                        const pureStateName = data.state.replace(currentSubgraph.prefixRegex, '');
 
                         switch(data.event) {
                             case 'state_enter':
-                                addStateToSubgraphTable(displayName, data.data, data.timestamp);
-                                highlightStateInSubgraph(displayName, true);
+                                addStateToSubgraphTable(pureStateName, data.data, data.timestamp);
+                                highlightStateInSubgraph(pureStateName, true);
                                 break;
                             case 'state_exit':
-                                highlightStateInSubgraph(displayName, false);
+                                highlightStateInSubgraph(pureStateName, false);
                                 break;
                         }
                     }
                 }
+                if (data.event === 'state_enter') {
+                    if (data.state) {
+                        // Добавляем состояние в историю
+                        stateHistory.push({
+                            state: data.state,
+                            graph: data.graph_id,
+                            timestamp: data.timestamp
+                        });
+
+                        addStateToTable(data.state, data.data, data.timestamp, data.graph_id);
+                        highlightState(data.state, true);
+
+                        // Если в истории больше одного состояния, подсвечиваем переход
+                        if (stateHistory.length > 1) {
+                            const previousState = stateHistory[stateHistory.length - 2];
+                            const currentState = stateHistory[stateHistory.length - 1];
+
+                            if (previousState.graph === currentState.graph) {
+                                // Получаем комментарий перехода из заранее загруженных данных
+                                const transitionKey = `${previousState.state}-${currentState.state}`;
+                                const transitionComment = transitions[transitionKey] || "Transition";
+
+                                highlightTransition(previousState.state, currentState.state, true, transitionComment);
+
+                                setTimeout(() => {
+                                    highlightTransition(previousState.state, currentState.state, false);
+                                }, 2000);
+                            }
+                        }
+                    }
+                }
+                if (data.event === 'state_exit') {
+                    if (data.state) {
+                        highlightState(data.state, false);
+                    }
+                }
+
             } catch (error) {
                 console.error("Error processing event:", error);
             }
@@ -525,6 +661,17 @@ document.addEventListener('DOMContentLoaded', function() {
                     break;
             }
         }
+    }
+
+    function loadTransitions(graphId) {
+        fetch(`/api/transitions/${graphId}/`)
+            .then(response => response.json())
+            .then(data => {
+                transitions = data;
+            })
+            .catch(error => {
+                console.error("Error loading transitions:", error);
+            });
     }
 
     function highlightStateInSubgraph(stateName, isActive) {
@@ -606,78 +753,246 @@ document.addEventListener('DOMContentLoaded', function() {
         return row;
     }
 
-    // Функция для добавления состояния в таблицу подграфа
-    //function addStateToSubgraphTable(state, data, eventTime) {
-    //    const tableBody = document.querySelector('#subgraph-states-body');
-    //    if (!tableBody) return;
-//
-    //    const row = document.createElement('tr');
-    //    row.dataset.state = state;
-    //    row.dataset.time = eventTime;
-//
-    //    const stateCell = document.createElement('td');
-    //    stateCell.textContent = state;
-    //    stateCell.style.fontWeight = '500';
-//
-    //    const dataCell = document.createElement('td');
-    //    dataCell.textContent = formatDataForDisplay(data);
-//
-    //    row.appendChild(stateCell);
-    //    row.appendChild(dataCell);
-    //    tableBody.appendChild(row);
-//
-    //    // Прокрутка к последнему элементу
-    //    row.scrollIntoView({behavior: 'smooth', block: 'nearest'});
-    //}
-
-    // Карта для связи узлов графа с записями в таблице
     const stateRowMap = new Map();
     const subgraphStateRowMap = new Map();
 
     function getPureStateName(stateName, subgraphName) {
-    return stateName.split('_', 2)[1] ?? state;
-}
+        return stateName.split('_', 2)[1] ?? state;
+    }
 
     // Функция добавления состояния в таблицу подграфа
-    function addStateToSubgraphTable(fullStateName, data, eventTime) {
+    function addStateToSubgraphTable(stateName, data, eventTime, graphName) {
         const tableBody = document.querySelector('#subgraph-states-body');
         if (!tableBody) return;
 
-        // Извлекаем чистое имя состояния
-        let pureStateName = fullStateName;
-        if (currentSubgraph.statePrefix) {
-            // Удаляем префикс подграфа
-            pureStateName = fullStateName.replace(currentSubgraph.statePrefix, '');
-
-            // Для состояний вида "___END__" оставляем "__END__"
-            if (pureStateName.startsWith('__') && pureStateName.endsWith('__')) {
-                pureStateName = pureStateName.substring(1); // Убираем одно подчеркивание в начале
-            }
-        }
-
         const row = document.createElement('tr');
-        row.dataset.state = pureStateName;
+        row.dataset.state = stateName;
         row.dataset.time = eventTime;
 
+        // Добавляем ячейку для имени графа
+        const graphCell = document.createElement('td');
+        graphCell.textContent = graphName || currentSubgraph.baseName;
+
         const stateCell = document.createElement('td');
-        stateCell.textContent = pureStateName;
+        stateCell.textContent = stateName;
         stateCell.style.fontWeight = '500';
 
         const dataCell = document.createElement('td');
         dataCell.textContent = formatDataForDisplay(data);
 
+        row.appendChild(graphCell);
         row.appendChild(stateCell);
         row.appendChild(dataCell);
         tableBody.appendChild(row);
 
         // Добавляем обработчик клика
         row.addEventListener('click', () => {
-            highlightStateInSubgraph(pureStateName, true);
-            centerNodeInSubgraphView(pureStateName);
+            highlightStateInSubgraph(stateName, true);
+            centerNodeInSubgraphView(stateName);
         });
 
         row.scrollIntoView({behavior: 'smooth', block: 'nearest'});
-        return row;
+    }
+
+    function initEdgeAttributes(container) {
+        const nodeIdToName = {};
+
+        console.log("=== INIT EDGE ATTRIBUTES ===");
+
+        // Собираем mapping id узла -> имя состояния
+        container.querySelectorAll('.node').forEach(node => {
+            const title = node.querySelector('title');
+            if (title) {
+                const nodeId = title.textContent;
+                const stateName = node.getAttribute('data-name') ||
+                                 node.querySelector('text')?.textContent ||
+                                 nodeId;
+                nodeIdToName[nodeId] = stateName;
+                console.log(`Node mapping: ${nodeId} -> ${stateName}`);
+            }
+        });
+
+        // Обрабатываем ребра
+        container.querySelectorAll('g.edge').forEach(edge => {
+            const title = edge.querySelector('title');
+            if (title) {
+                const text = title.textContent;
+                console.log(`Edge title: ${text}`);
+
+                const match = text.match(/(\d+)->(\d+)/);
+                if (match) {
+                    const sourceId = match[1];
+                    const targetId = match[2];
+                    edge.dataset.source = nodeIdToName[sourceId] || sourceId;
+                    edge.dataset.target = nodeIdToName[targetId] || targetId;
+                    console.log(`Edge from ${sourceId} to ${targetId} mapped to: ${edge.dataset.source} -> ${edge.dataset.target}`);
+                }
+            }
+        });
+
+        console.log("=== END INIT EDGE ATTRIBUTES ===");
+    }
+
+    function debugEdgeInfo() {
+        console.log("=== EDGE DEBUG INFO ===");
+        const edges = document.querySelectorAll('g.edge');
+        edges.forEach(edge => {
+            const title = edge.querySelector('title');
+            console.log(`Edge ID: ${edge.id}, Title: ${title?.textContent}`);
+            console.log(`  Data source: ${edge.dataset.source}`);
+            console.log(`  Data target: ${edge.dataset.target}`);
+
+            // Проверим родительский элемент и его структуру
+            console.log(`  Parent: ${edge.parentElement?.tagName}`);
+        });
+        console.log("=== END EDGE DEBUG ===");
+    }
+
+    // Инициализация атрибутов после загрузки SVG
+    const svgContainer = document.querySelector('.graph-svg-container');
+    if (svgContainer) {
+        // Ждем немного для полной загрузки SVG
+        setTimeout(() => {
+            initEdgeAttributes(svgContainer);
+            debugEdgeInfo(); // Добавляем отладочную информацию
+
+            // Тестовое подсвечивание ребра при загрузке
+            highlightEdge('__BEGIN__', 'ST1', true);
+        }, 500); // Увеличиваем задержку для полной загрузки SVG
+    }
+    //----
+    function addArrowMarker(svgElement) {
+        const defs = svgElement.querySelector('defs') || document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+        if (!svgElement.querySelector('defs')) {
+            svgElement.insertBefore(defs, svgElement.firstChild);
+        }
+
+        // Проверяем, есть ли уже наш маркер
+        if (!svgElement.querySelector('#arrowhead-transition')) {
+            const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+            marker.setAttribute('id', 'arrowhead-transition');
+            marker.setAttribute('markerWidth', '10');
+            marker.setAttribute('markerHeight', '7');
+            marker.setAttribute('refX', '9');
+            marker.setAttribute('refY', '3.5');
+            marker.setAttribute('orient', 'auto');
+
+            const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+            polygon.setAttribute('points', '0 0, 10 3.5, 0 7');
+            polygon.setAttribute('fill', '#ff5722');
+
+            marker.appendChild(polygon);
+            defs.appendChild(marker);
+        }
+    }
+
+    // Функция для создания новой стрелки перехода
+    function createTransitionArrow(fromState, toState, label) {
+        const svgElement = document.querySelector('svg');
+        addArrowMarker(svgElement);
+
+        // Находим позиции узлов
+        const fromNode = document.querySelector(`[data-name="${fromState}"]`);
+        const toNode = document.querySelector(`[data-name="${toState}"]`);
+
+        if (!fromNode || !toNode) {
+            console.error(`Nodes not found for transition: ${fromState} -> ${toState}`);
+            return null;
+        }
+
+        // Получаем координаты центров узлов
+        const fromRect = fromNode.getBoundingClientRect();
+        const toRect = toNode.getBoundingClientRect();
+        const svgRect = svgElement.getBoundingClientRect();
+
+        const fromCenter = {
+            x: fromRect.left + fromRect.width/2 - svgRect.left,
+            y: fromRect.top + fromRect.height/2 - svgRect.top
+        };
+
+        const toCenter = {
+            x: toRect.left + toRect.width/2 - svgRect.left,
+            y: toRect.top + toRect.height/2 - svgRect.top
+        };
+
+        // Создаем путь для стрелки
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('class', 'transition-arrow');
+
+        // Рассчитываем контрольные точки для изогнутой линии
+        const dx = toCenter.x - fromCenter.x;
+        const dy = toCenter.y - fromCenter.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        // Создаем изогнутую линию
+        const controlPointX = (fromCenter.x + toCenter.x) / 2 + dy / 3;
+        const controlPointY = (fromCenter.y + toCenter.y) / 2 - dx / 3;
+
+        path.setAttribute('d', `M${fromCenter.x},${fromCenter.y} Q${controlPointX},${controlPointY} ${toCenter.x},${toCenter.y}`);
+
+        // Добавляем метку с названием перехода
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('class', 'transition-label');
+        text.setAttribute('x', controlPointX);
+        text.setAttribute('y', controlPointY - 10);
+        text.setAttribute('text-anchor', 'middle');
+        text.textContent = label || 'transition';
+
+        // Создаем группу для элементов перехода
+        const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        group.setAttribute('class', 'dynamic-transition');
+        group.setAttribute('data-from', fromState);
+        group.setAttribute('data-to', toState);
+        group.appendChild(path);
+        group.appendChild(text);
+
+        // Добавляем группу в SVG
+        svgElement.appendChild(group);
+
+        return group;
+    }
+
+    // Функция для удаления всех динамических стрелок
+    function removeAllTransitionArrows() {
+        document.querySelectorAll('.dynamic-transition').forEach(el => el.remove());
+    }
+
+    // Модифицированная функция highlightTransition
+    function highlightTransition(fromState, toState, isActive, edgeComment) {
+        // Сначала удаляем все существующие стрелки
+        removeAllTransitionArrows();
+
+        if (isActive) {
+            // Создаем новую стрелку для этого перехода
+            createTransitionArrow(fromState, toState, edgeComment);
+
+            // Добавляем таймер для автоматического удаления через 2 секунды
+            setTimeout(() => {
+                removeAllTransitionArrows();
+            }, 2000);
+        }
+    }
+    //----
+
+
+    function highlightTransition(fromState, toState, isActive, edgeComment) {
+        const edges = document.querySelectorAll('g.edge');
+        let edgeFound = false;
+
+        edges.forEach(edge => {
+            if (edge.dataset.source === fromState && edge.dataset.target === toState) {
+                if (isActive) {
+                    edge.classList.add('edge-highlight');
+                } else {
+                    edge.classList.remove('edge-highlight');
+                }
+                edgeFound = true;
+            }
+        });
+
+        if (!edgeFound) {
+            console.log(`Edge from ${fromState} to ${toState} not found`);
+        }
     }
 
     function highlightStateInSubgraph(stateName, isActive) {
@@ -773,14 +1088,59 @@ document.addEventListener('DOMContentLoaded', function() {
         return JSON.stringify(filteredData, null, 2);
     }
 
+    function initResizer() {
+        const resizer = document.getElementById('subgraph-resizer');
+        const leftPanel = document.getElementById('subgraph-svg-container');
+        const rightPanel = document.querySelector('.resizable-right');
+
+        let isResizing = false;
+
+        resizer.addEventListener('mousedown', function(e) {
+            isResizing = true;
+            document.body.style.cursor = 'col-resize';
+            leftPanel.style.userSelect = 'none';
+            leftPanel.style.pointerEvents = 'none';
+            rightPanel.style.userSelect = 'none';
+            rightPanel.style.pointerEvents = 'none';
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (!isResizing) return;
+
+            const containerRect = leftPanel.parentElement.getBoundingClientRect();
+            const xPosition = e.clientX - containerRect.left;
+
+            const leftWidth = (xPosition / containerRect.width) * 100;
+            const rightWidth = 100 - leftWidth - (10 / containerRect.width) * 100;
+
+            leftPanel.style.flex = `${leftWidth} 1 0`;
+            rightPanel.style.flex = `${rightWidth} 1 0`;
+        });
+
+        document.addEventListener('mouseup', function() {
+            isResizing = false;
+            document.body.style.cursor = '';
+            leftPanel.style.userSelect = '';
+            leftPanel.style.pointerEvents = '';
+            rightPanel.style.userSelect = '';
+            rightPanel.style.pointerEvents = '';
+        });
+    }
+
      window.openSubgraph = function(graphId, graphBaseName) {
         console.log(`Opening subgraph: ${graphId} (base name: ${graphBaseName})`);
         const modal = document.getElementById('subgraph-modal');
-        const content = document.getElementById('subgraph-content');
+        const modalContent = document.getElementById('subgraph-content'); // Определяем здесь
 
-        // Экранируем спецсимволы в имени графа
+        // Создаем регулярное выражение для префикса
         const escapedBaseName = graphBaseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const prefixRegex = new RegExp(`^${escapedBaseName}\\d*_`);
+        const prefixRegex = new RegExp(`^${escapedBaseName}\\d+_`);
+
+        currentSubgraph = {
+            id: graphId,
+            baseName: graphBaseName,
+            prefixRegex: prefixRegex
+        };
         const subgraphEvent = allEvents.find(e => e.state && prefixRegex.test(e.state));
 
         if (subgraphEvent) {
@@ -810,22 +1170,23 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Загружаем SVG асинхронно с включенными куками
         fetch(`/graph-svg/${graphId}/`, {
-            credentials: 'include' // Важно для передачи сессии
+            credentials: 'include'
         })
         .then(response => {
             if (!response.ok) {
-                // Добавляем информацию о статусе ошибки
                 throw new Error(`Ошибка загрузки подграфа: ${response.status} ${response.statusText}`);
             }
             return response.text();
         })
         .then(svg => {
-            content.innerHTML = `
-                <div class="graph-container" style="display: flex; height: 100%; gap: 15px;">
-                    <div class="graph-svg-container" style="flex: 3; height: 100%;">
+            // Используем modalContent вместо content
+            modalContent.innerHTML = `
+                <div class="resizable-container">
+                    <div class="resizable-panel resizable-left" id="subgraph-svg-container">
                         ${svg}
                     </div>
-                    <div class="graph-data-container" style="flex: 2; height: 100%;">
+                    <div class="resizer" id="subgraph-resizer"></div>
+                    <div class="resizable-panel resizable-right">
                         <h2 class="data-section-title">История выполнения</h2>
                         <div class="states-table-container">
                             <table class="states-table">
@@ -843,6 +1204,29 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             `;
 
+            // Инициализируем атрибуты ребер для modalContent
+            initEdgeAttributes(modalContent); // Используем modalContent
+            initResizer();
+
+
+            setTimeout(() => {
+                const svgContainer = content.querySelector('.graph-svg-container');
+                if (svgContainer) {
+                    const svgElement = svgContainer.querySelector('svg');
+                    if (svgElement) {
+                        const bbox = svgElement.getBBox();
+                        const width = svgElement.clientWidth;
+                        const height = svgElement.clientHeight;
+
+                        svgContainer.scrollTo({
+                            left: bbox.x + bbox.width/2 - width/2,
+                            top: bbox.y + bbox.height/2 - height/2,
+                            behavior: 'auto'
+                        });
+                    }
+                }
+            }, 300);
+
             // Фильтрация событий для подграфа
             const subgraphEvents = currentSubgraph.statePrefix
                 ? allEvents.filter(e => e.state?.startsWith(currentSubgraph.statePrefix))
@@ -858,16 +1242,24 @@ document.addEventListener('DOMContentLoaded', function() {
                     addStateToSubgraphTable(pureStateName, event.data, event.timestamp);
                 }
             });
+            initEdgeAttributes(modalContent);
         })
+
         .catch(error => {
             console.error("Ошибка загрузки подграфа:", error);
-            content.innerHTML = `
+            modalContent.innerHTML = `
                 <div style="text-align: center; padding: 40px; color: var(--error);">
                     <i class="fas fa-exclamation-triangle"></i> ${error.message}
                 </div>
             `;
         });
     };
+
+    document.addEventListener('DOMContentLoaded', function() {
+        initEdgeAttributes(document);
+    });
+
+    initEdgeAttributes(document);
 
     window.closeSubgraph = function() {
         document.getElementById('subgraph-modal').style.display = 'none';
@@ -917,6 +1309,48 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     }
+
+    function highlightEdge(sourceState, targetState, isActive) {
+        const edges = document.querySelectorAll('g.edge');
+        let edgeFound = false;
+
+        console.log(`Trying to highlight edge: ${sourceState} -> ${targetState}`);
+
+        edges.forEach(edge => {
+            const edgeSource = edge.dataset.source;
+            const edgeTarget = edge.dataset.target;
+
+            console.log(`Checking edge: ${edgeSource} -> ${edgeTarget}`);
+
+            if ((edgeSource === sourceState && edgeTarget === targetState) ||
+                (edgeSource === `_${sourceState}` && edgeTarget === `_${targetState}`) ||
+                (edgeSource === `${sourceState}_` && edgeTarget === `${targetState}_`)) {
+
+                if (isActive) {
+                    edge.classList.add('edge-highlight');
+                    // Автоматическое удаление подсветки через 2 секунды
+                    setTimeout(() => {
+                        edge.classList.remove('edge-highlight');
+                    }, 2000);
+                } else {
+                    edge.classList.remove('edge-highlight');
+                }
+                edgeFound = true;
+                console.log(`Edge found and highlighted: ${edgeSource} -> ${edgeTarget}`);
+            }
+        });
+
+        if (!edgeFound) {
+            console.log(`Edge from ${sourceState} to ${targetState} not found`);
+            // Дополнительная отладка
+            console.log("Available edges:");
+            document.querySelectorAll('g.edge').forEach(e => {
+                console.log(`Edge: ${e.dataset.source} -> ${e.dataset.target}`);
+            });
+        }
+    }
+
+
 
     // Функция центрирования узла в области просмотра
     function centerNodeInView(stateName) {
@@ -1029,6 +1463,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Сброс состояния таблицы
         statesBody.innerHTML = '';
         stateRowMap.clear();
+        stateHistory = [];
 
         // Добавляем сообщение о начале выполнения
         const row = document.createElement('tr');
@@ -1077,62 +1512,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Создаем EventSource для получения событий
-    //if (sessionId) {
-    //    const eventSource = new EventSource(`/execution/events/${sessionId}/`);
-//
-    //    eventSource.onmessage = function(event) {
-    //        try {
-    //            const data = JSON.parse(event.data);
-    //            console.log("Received event:", data);
-//
-    //            if (data.progress) {
-    //                document.getElementById('execution-progress').style.width = `${data.progress}%`;
-    //            }
-//
-    //            switch(data.event) {
-    //                case 'state_enter':
-    //                    const row = addStateToTable(data.state, data.data, data.timestamp);
-    //                    highlightState(data.state, true);
-//
-    //                    // Если модальное окно подграфа открыто, обновляем подсветку
-    //                    if (document.getElementById('subgraph-modal').style.display === 'block') {
-    //                        const subgraphContent = document.querySelector('#subgraph-content .node[data-name="${data.state}"]');
-    //                        if (subgraphContent) {
-    //                            subgraphContent.classList.add('state-active');
-    //                        }
-    //                    }
-    //                    break;
-//
-    //                case 'state_exit':
-    //                    highlightState(data.state, false);
-    //                    break;
-//
-    //                case 'complete':
-    //                    handleExecutionComplete(data);
-    //                    eventSource.close();
-    //                    break;
-    //            }
-    //        } catch (error) {
-    //            console.error("Error processing event:", error);
-    //        }
-    //    };
-//
-    //    eventSource.onerror = function(error) {
-    //        console.error("EventSource error:", error);
-    //        if (!executionCompleted) {
-    //            const row = document.createElement('tr');
-    //            row.innerHTML = `
-    //                <td colspan="2" style="color: var(--error);">
-    //                    <i class="fas fa-exclamation-triangle"></i> Ошибка соединения
-    //                </td>
-    //            `;
-    //            statesBody.appendChild(row);
-    //        }
-    //        eventSource.close();
-    //    };
-    //}
-
 
     // Добавляем обработчики кликов на узлы графа
     document.querySelectorAll('.node').forEach(node => {
@@ -1179,6 +1558,21 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         return cookieValue;
     }
+
+    function debugEdges() {
+        console.log("=== DEBUG EDGES ===");
+        const edges = document.querySelectorAll('g.edge');
+        edges.forEach(edge => {
+            console.log(`Edge ID: ${edge.id}`);
+            console.log(`  Data source: ${edge.dataset.source}`);
+            console.log(`  Data target: ${edge.dataset.target}`);
+            console.log(`  Title: ${edge.querySelector('title')?.textContent}`);
+        });
+        console.log("=== END DEBUG ===");
+    }
+    loadTransitions({{ graph.id }});
+    initEdgeAttributes(document);
+    debugEdges();
 });
 </script>
 {% endblock %}

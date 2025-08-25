@@ -23,6 +23,7 @@ urlpatterns = [
     path('graph/<int:graph_id>/start/', views.start_execution, name='start-execution'),
     path('execution/events/<str:session_id>/', views.execution_events, name='execution-events'),
     path('graph/<int:graph_id>/visualize/', views.graph_interactive_view, name='graph-visualization'),
+    path('api/transitions/<int:graph_id>/', views.get_transitions, name='get_transitions'),
     ]
 
 urlpatterns += static(

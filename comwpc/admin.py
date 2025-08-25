@@ -37,30 +37,38 @@ class GraphAdmin(admin.ModelAdmin):
             return "Сначала создайте граф"
 
         dot = graphviz.Digraph()
-        dot.attr('node', shape='box')
+        dot.attr('node', shape='rect', style='rounded,filled', fontname='Roboto')
         dot.attr(rankdir='LR')
 
-        # Добавляем состояния
         for state in obj.state_set.all():
             if state.subgraph:
                 dot.node(
                     str(state.id),
                     label=state.name,
                     shape='folder',
-                    color='orange',
-                    style='filled',
-                    fillcolor='moccasin',
-                    URL=reverse('admin:comwpc_graph_change', args=[state.subgraph.id])
+                    color='#e67e22',  # Оранжевый
+                    style='rounded,filled',
+                    fillcolor='#fff4e5'  # Светло-оранжевый
                 )
             else:
-                color = 'green' if state.is_terminal else 'blue'
-                dot.node(
-                    str(state.id),
-                    label=state.name,
-                    color=color,
-                    style='filled' if state.is_terminal else '',
-                    fillcolor='lightgreen' if state.is_terminal else 'lightblue'
-                )
+                if state.is_terminal:
+                    # Терминальный узел
+                    dot.node(
+                        str(state.id),
+                        label=state.name,
+                        color='#28a745',  # Зеленый
+                        style='rounded,filled',
+                        fillcolor='#e7f5e9'  # Светло-зеленый
+                    )
+                else:
+                    # Обычный узел
+                    dot.node(
+                        str(state.id),
+                        label=state.name,
+                        color='#417690',  # Синий
+                        style='rounded,filled',
+                        fillcolor='#f0f7ff'  # Светло-голубой
+                    )
 
         # Добавляем переходы
         for transfer in Transfer.objects.filter(source__graph=obj):

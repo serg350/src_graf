@@ -57,7 +57,7 @@ def graph_interactive_view(request, graph_id):
                 label=state.name,
                 shape='folder',
                 color='orange',
-                style='filled',
+                style='rounded,filled',
                 fillcolor='moccasin',
                 URL=f"javascript:openSubgraph({state.subgraph.id}, '{base_name}')"
             )
@@ -65,7 +65,7 @@ def graph_interactive_view(request, graph_id):
             color = 'green' if state.is_terminal else 'blue'
             attrs.update({
                 'color': color,
-                'style': 'filled' if state.is_terminal else '',
+                'style': 'rounded,filled' if state.is_terminal else '',
                 'fillcolor': 'lightgreen' if state.is_terminal else 'lightblue'
             })
         dot.node(
@@ -149,22 +149,57 @@ def graph_interactive_view(request, graph_id):
     })
 
 
+@staff_member_required
+def get_transitions(request, graph_id):
+    graph = get_object_or_404(Graph, pk=graph_id)
+    transitions = {}
+
+    for transfer in Transfer.objects.filter(graph=graph):
+        key = f"{transfer.source.name}-{transfer.target.name}"
+        transitions[key] = transfer.edge.comment
+
+    return JsonResponse(transitions)
+
+
 def add_data_attributes(svg_str, graph):
     """Добавляет data-атрибуты в SVG для интерактивности"""
     # Создаем маппинг id состояния -> имя
     state_mapping = {str(state.id): state.name for state in graph.state_set.all()}
 
-    # Регулярное выражение для поиска узлов
-    pattern = r'<g id="(node\d+)" class="node">\s*<title>([^<]+)<\/title>'
-
-    # Заменяем title на группу с data-атрибутами
-    def add_attributes(match):
-        node_id = match.group(1)
+    # Функция для замены узлов
+    def node_replacer(match):
+        full_node_id = match.group(1)
         title = match.group(2)
-        state_name = state_mapping.get(title.split(':')[-1].strip(), title)
-        return f'<g id="{node_id}" class="node" data-name="{state_name}" data-id="{title}">'
+        state_name = state_mapping.get(title, title)
+        return f'<g id="{full_node_id}" class="node" data-name="{state_name}" data-id="{title}">'
 
-    return re.sub(pattern, add_attributes, svg_str)
+    # Функция для замены ребер
+    def edge_replacer(match):
+        full_edge_id = match.group(1)
+        title = match.group(2)
+        parts = title.split('->')
+        if len(parts) == 2:
+            source_id, target_id = parts
+            source_name = state_mapping.get(source_id.strip(), source_id)
+            target_name = state_mapping.get(target_id.strip(), target_id)
+            return f'<g id="{full_edge_id}" class="edge" data-source="{source_name}" data-target="{target_name}">'
+        return match.group(0)
+
+    # Заменяем узлы
+    svg_str = re.sub(
+        r'<g id="(node\d+)" class="node">\s*<title>([^<]+)<\/title>',
+        node_replacer,
+        svg_str
+    )
+
+    # Заменяем ребра
+    svg_str = re.sub(
+        r'<g id="(edge\d+)" class="edge">\s*<title>([^<]+)<\/title>',
+        edge_replacer,
+        svg_str
+    )
+
+    return svg_str
 
 
 @staff_member_required
@@ -176,6 +211,7 @@ def graph_interactive_content(request, graph_id):
     dot = graphviz.Digraph()
     dot.attr('node', shape='box')
     dot.attr(rankdir='LR')
+    dot.attr('node', shape='rect', style='rounded,filled', fontname='Roboto')
 
     # Добавляем состояния
     for state in graph.state_set.all():
@@ -185,7 +221,7 @@ def graph_interactive_content(request, graph_id):
                 label=state.name,
                 shape='folder',
                 color='orange',
-                style='filled',
+                style='rounded,filled',
                 fillcolor='moccasin',
                 URL=f"javascript:openSubgraph({state.subgraph.id})"
             )
@@ -195,7 +231,7 @@ def graph_interactive_content(request, graph_id):
                 str(state.id),
                 label=state.name,
                 color=color,
-                style='filled' if state.is_terminal else '',
+                style='rounded,filled' if state.is_terminal else '',
                 fillcolor='lightgreen' if state.is_terminal else 'lightblue'
             )
 
@@ -217,14 +253,21 @@ def graph_interactive_content(request, graph_id):
     })
 
 
-# views.py
 @staff_member_required
 def graph_svg_view(request, graph_id):
     graph = get_object_or_404(Graph, pk=graph_id)
     dot = graphviz.Digraph()
     dot.attr('node', shape='box')
     dot.attr(rankdir='TB')
-    dot.attr('node', shape='rect', style='rounded,filled', fontname='Roboto')
+
+    # Устанавливаем единые стили для всех узлов
+    dot.attr('node',
+             shape='rect',
+             style='rounded,filled',
+             fontname='Roboto',
+             fontsize='12',
+             width='1.5',
+             height='0.8')
 
     for state in graph.state_set.all():
         if state.subgraph:
@@ -235,22 +278,30 @@ def graph_svg_view(request, graph_id):
             dot.node(
                 str(state.id),
                 label=state.name,
-                shape='rect',
+                shape='folder',
+                color='#e67e22',  # Оранжевый
                 style='rounded,filled',
-                fillcolor='#fff4e5',  # Светло-оранжевый фон
-                color='#e67e22',  # Оранжевая обводка
-                fontcolor='#5d4037',  # Темно-коричневый текст
-                URL=f"javascript:openSubgraph({state.subgraph.id}, 'PREPROCESS')"
+                fillcolor='#fff4e5'  # Светло-оранжевый
             )
         else:
-            color = 'green' if state.is_terminal else 'blue'
-            dot.node(
-                str(state.id),
-                label=state.name,
-                color=color,
-                style='filled' if state.is_terminal else '',
-                fillcolor='lightgreen' if state.is_terminal else 'lightblue'
-            )
+            if state.is_terminal:
+                # Терминальный узел - зеленый
+                dot.node(
+                    str(state.id),
+                    label=state.name,
+                    color='#28a745',  # Зеленый
+                    style='rounded,filled',
+                    fillcolor='#e7f5e9'  # Светло-зеленый
+                )
+            else:
+                # Обычный узел - синий
+                dot.node(
+                    str(state.id),
+                    label=state.name,
+                    color='#417690',  # Синий
+                    style='rounded,filled',
+                    fillcolor='#f0f7ff'  # Светло-голубой
+                )
 
     # Добавляем переходы
     for transfer in graph.transfer_set.all():
@@ -264,7 +315,7 @@ def graph_svg_view(request, graph_id):
     svg_bytes = dot.pipe(format='svg')
     svg_str = svg_bytes.decode('utf-8')
 
-    # Исправление: добавляем data-атрибуты
+    # Добавляем data-атрибуты
     svg_str = add_data_attributes(svg_str, graph)
 
     svg_str = re.sub(
