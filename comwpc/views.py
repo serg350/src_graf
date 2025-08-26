@@ -166,12 +166,28 @@ def add_data_attributes(svg_str, graph):
     # Создаем маппинг id состояния -> имя
     state_mapping = {str(state.id): state.name for state in graph.state_set.all()}
 
+    # Создаем маппинг для подграфов
+    subgraph_mapping = {}
+    for state in graph.state_set.all():
+        if state.subgraph:
+            subgraph_mapping[str(state.id)] = {
+                'graph_id': state.subgraph.id,
+                'graph_name': state.subgraph.name
+            }
+
     # Функция для замены узлов
     def node_replacer(match):
         full_node_id = match.group(1)
         title = match.group(2)
         state_name = state_mapping.get(title, title)
-        return f'<g id="{full_node_id}" class="node" data-name="{state_name}" data-id="{title}">'
+
+        # Добавляем атрибуты для подграфов
+        attrs = f'data-name="{state_name}" data-id="{title}"'
+        if title in subgraph_mapping:
+            subgraph_info = subgraph_mapping[title]
+            attrs += f' data-graph-id="{subgraph_info["graph_id"]}" data-graph-name="{subgraph_info["graph_name"]}"'
+
+        return f'<g id="{full_node_id}" class="node" {attrs}>'
 
     # Функция для замены ребер
     def edge_replacer(match):

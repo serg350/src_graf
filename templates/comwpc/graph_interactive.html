@@ -796,7 +796,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function initEdgeAttributes(container) {
         const nodeIdToName = {};
-
         console.log("=== INIT EDGE ATTRIBUTES ===");
 
         // Собираем mapping id узла -> имя состояния
@@ -823,15 +822,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (match) {
                     const sourceId = match[1];
                     const targetId = match[2];
-                    edge.dataset.source = nodeIdToName[sourceId] || sourceId;
-                    edge.dataset.target = nodeIdToName[targetId] || targetId;
-                    console.log(`Edge from ${sourceId} to ${targetId} mapped to: ${edge.dataset.source} -> ${edge.dataset.target}`);
+                    const sourceName = nodeIdToName[sourceId] || sourceId;
+                    const targetName = nodeIdToName[targetId] || targetId;
+
+                    edge.dataset.source = sourceName;
+                    edge.dataset.target = targetName;
+                    console.log(`Edge mapped to: ${sourceName} -> ${targetName}`);
                 }
             }
         });
-
         console.log("=== END INIT EDGE ATTRIBUTES ===");
     }
+
 
     function debugEdgeInfo() {
         console.log("=== EDGE DEBUG INFO ===");
@@ -958,40 +960,78 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Модифицированная функция highlightTransition
-    function highlightTransition(fromState, toState, isActive, edgeComment) {
-        // Сначала удаляем все существующие стрелки
-        removeAllTransitionArrows();
-
-        if (isActive) {
-            // Создаем новую стрелку для этого перехода
-            createTransitionArrow(fromState, toState, edgeComment);
-
-            // Добавляем таймер для автоматического удаления через 2 секунды
-            setTimeout(() => {
-                removeAllTransitionArrows();
-            }, 2000);
-        }
-    }
+    //function highlightTransition(fromState, toState, isActive, edgeComment) {
+    //    // Сначала удаляем все существующие стрелки
+    //    removeAllTransitionArrows();
+//
+    //    if (isActive) {
+    //        // Создаем новую стрелку для этого перехода
+    //        createTransitionArrow(fromState, toState, edgeComment);
+//
+    //        // Добавляем таймер для автоматического удаления через 2 секунды
+    //        setTimeout(() => {
+    //            removeAllTransitionArrows();
+    //        }, 2000);
+    //    }
+    //}
     //----
 
 
+    //function highlightTransition(fromState, toState, isActive, edgeComment) {
+    //    const edges = document.querySelectorAll('g.edge');
+    //    let edgeFound = false;
+//
+    //    edges.forEach(edge => {
+    //        if (edge.dataset.source === fromState && edge.dataset.target === toState) {
+    //            if (isActive) {
+    //                edge.classList.add('edge-highlight');
+    //            } else {
+    //                edge.classList.remove('edge-highlight');
+    //            }
+    //            edgeFound = true;
+    //        }
+    //    });
+//
+    //    if (!edgeFound) {
+    //        console.log(`Edge from ${fromState} to ${toState} not found`);
+    //    }
+    //}
+
     function highlightTransition(fromState, toState, isActive, edgeComment) {
+        console.log(`Trying to highlight edge: ${fromState} -> ${toState}`);
+
         const edges = document.querySelectorAll('g.edge');
         let edgeFound = false;
 
         edges.forEach(edge => {
-            if (edge.dataset.source === fromState && edge.dataset.target === toState) {
+            const edgeSource = edge.dataset.source;
+            const edgeTarget = edge.dataset.target;
+
+            if ((edgeSource === fromState && edgeTarget === toState) ||
+                (edgeSource === `_${fromState}` && edgeTarget === `_${toState}`) ||
+                (edgeSource === `${fromState}_` && edgeTarget === `${toState}_`)) {
+
                 if (isActive) {
                     edge.classList.add('edge-highlight');
+                    // Автоматическое удаление подсветки через 2 секунды
+                    setTimeout(() => {
+                        edge.classList.remove('edge-highlight');
+                    }, 2000);
                 } else {
                     edge.classList.remove('edge-highlight');
                 }
                 edgeFound = true;
+                console.log(`Edge found and highlighted: ${edgeSource} -> ${edgeTarget}`);
             }
         });
 
         if (!edgeFound) {
             console.log(`Edge from ${fromState} to ${toState} not found`);
+            // Дополнительная отладка
+            console.log("Available edges:");
+            document.querySelectorAll('g.edge').forEach(e => {
+                console.log(`Edge: ${e.dataset.source} -> ${e.dataset.target}`);
+            });
         }
     }
 
@@ -1130,7 +1170,7 @@ document.addEventListener('DOMContentLoaded', function() {
      window.openSubgraph = function(graphId, graphBaseName) {
         console.log(`Opening subgraph: ${graphId} (base name: ${graphBaseName})`);
         const modal = document.getElementById('subgraph-modal');
-        const modalContent = document.getElementById('subgraph-content'); // Определяем здесь
+        const modalContent = document.getElementById('subgraph-content'); // Определяем modalContent
 
         // Создаем регулярное выражение для префикса
         const escapedBaseName = graphBaseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1164,22 +1204,26 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         modal.dataset.currentGraph = graphId;
-        content.innerHTML = '<div style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i> Загрузка...</div>';
+        modalContent.innerHTML = '<div style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i> Загрузка...</div>';
         modal.style.display = 'block';
         document.getElementById('modal-backdrop').style.display = 'block';
 
         // Загружаем SVG асинхронно с включенными куками
         fetch(`/graph-svg/${graphId}/`, {
-            credentials: 'include'
+            credentials: 'include' // Важно для передачи сессии
         })
         .then(response => {
             if (!response.ok) {
+                // Добавляем информацию о статусе ошибки
                 throw new Error(`Ошибка загрузки подграфа: ${response.status} ${response.statusText}`);
             }
             return response.text();
         })
         .then(svg => {
-            // Используем modalContent вместо content
+            svg = svg.replace(/<g id="node/g, '<g class="node" id="node');
+            svg = svg.replace(/<g class="node terminal-node"/g, '<g class="terminal-node"');
+            svg = svg.replace(/<g class="node subgraph-node"/g, '<g class="subgraph-node"');
+
             modalContent.innerHTML = `
                 <div class="resizable-container">
                     <div class="resizable-panel resizable-left" id="subgraph-svg-container">
@@ -1204,13 +1248,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             `;
 
-            // Инициализируем атрибуты ребер для modalContent
-            initEdgeAttributes(modalContent); // Используем modalContent
+            // Инициализировать изменение размеров
             initResizer();
 
+            initEdgeAttributes(modalContent); // Используем modalContent вместо content
 
             setTimeout(() => {
-                const svgContainer = content.querySelector('.graph-svg-container');
+                const svgContainer = modalContent.querySelector('#subgraph-svg-container');
                 if (svgContainer) {
                     const svgElement = svgContainer.querySelector('svg');
                     if (svgElement) {
@@ -1242,9 +1286,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     addStateToSubgraphTable(pureStateName, event.data, event.timestamp);
                 }
             });
-            initEdgeAttributes(modalContent);
+            initEdgeAttributes(modalContent); // Используем modalContent вместо content
         })
-
         .catch(error => {
             console.error("Ошибка загрузки подграфа:", error);
             modalContent.innerHTML = `
