@@ -1,0 +1,43 @@
+digraph COMPOSITE_PROPERTY_OPTIMIZATION
+{
+    // Определения функций-обработчиков
+    REQUEST_TARGET [module=test_funcs.cmc_func, entry_func=request_target_property]
+    INITIAL_GUESS [module=test_funcs.cmc_func, entry_func=make_initial_guess]
+    CALCULATE_PROPERTY [module=test_funcs.cmc_func, entry_func=calculate_property]
+    CHECK_CONVERGENCE [module=test_funcs.cmc_func, entry_func=check_convergence]
+    ADJUST_PARAMETER [module=test_funcs.cmc_func, entry_func=adjust_parameter]
+    SAVE_OPTIMAL [module=test_funcs.cmc_func, entry_func=save_optimal_result]
+    SHOW_OPTIMAL [module=test_funcs.cmc_func, entry_func=show_optimal_result]
+    HANDLE_NO_CONVERGENCE [module=test_funcs.cmc_func, entry_func=handle_no_convergence]
+
+    // Определения предикатов
+    TRUE_PREDICATE [module=test_funcs.cmc_func, entry_func=true_predicate]
+    IS_CONVERGED [module=test_funcs.cmc_func, entry_func=is_converged]
+    IS_NOT_CONVERGED [module=test_funcs.cmc_func, entry_func=is_not_converged]
+    HAS_MORE_ITERATIONS [module=test_funcs.cmc_func, entry_func=has_more_iterations]
+    NO_MORE_ITERATIONS [module=test_funcs.cmc_func, entry_func=no_more_iterations]
+
+    // Определения морфизмов
+    MORPH_REQUEST [predicate=TRUE_PREDICATE, function=REQUEST_TARGET]
+    MORPH_GUESS [predicate=TRUE_PREDICATE, function=INITIAL_GUESS]
+    MORPH_CALCULATE [predicate=TRUE_PREDICATE, function=CALCULATE_PROPERTY]
+    MORPH_CHECK [predicate=TRUE_PREDICATE, function=CHECK_CONVERGENCE]
+    MORPH_ADJUST [predicate=IS_NOT_CONVERGED, function=ADJUST_PARAMETER]
+    MORPH_SAVE [predicate=IS_CONVERGED, function=SAVE_OPTIMAL]
+    MORPH_SHOW [predicate=IS_CONVERGED, function=SHOW_OPTIMAL]
+    MORPH_CONTINUE [predicate=HAS_MORE_ITERATIONS, function=INITIAL_GUESS]
+    MORPH_FAIL [predicate=NO_MORE_ITERATIONS, function=HANDLE_NO_CONVERGENCE]
+
+    // Определение ребер
+    __BEGIN__ -> TARGET_DEFINED [morphism=MORPH_REQUEST]
+    TARGET_DEFINED -> INITIAL_GUESS_MADE [morphism=MORPH_GUESS]
+    INITIAL_GUESS_MADE -> PROPERTY_CALCULATED [morphism=MORPH_CALCULATE]
+    PROPERTY_CALCULATED -> CONVERGENCE_CHECKED [morphism=MORPH_CHECK]
+    CONVERGENCE_CHECKED -> OPTIMAL_SAVED [morphism=MORPH_SAVE]
+    CONVERGENCE_CHECKED -> PARAMETER_ADJUSTED [morphism=MORPH_ADJUST]
+    OPTIMAL_SAVED -> OPTIMAL_SHOWN [morphism=MORPH_SHOW]
+    OPTIMAL_SHOWN -> __END__
+    PARAMETER_ADJUSTED -> INITIAL_GUESS_MADE [morphism=MORPH_CONTINUE]
+    PARAMETER_ADJUSTED -> NO_CONVERGENCE [morphism=MORPH_FAIL]
+    NO_CONVERGENCE -> __END__
+}
