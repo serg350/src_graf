@@ -65,6 +65,24 @@
         margin: 0;
     }
 
+    .resizer {
+        width: 10px;
+        background: var(--divider);
+        cursor: col-resize;
+        flex-shrink: 0;
+    }
+
+    .graph-container {
+        display: flex;
+        gap: 0; /* Убираем gap, так как resizer будет занимать место */
+        height: 70vh;
+    }
+
+    .graph-svg-container,
+    .graph-data-container {
+        flex: 1 1 0; /* Равное начальное распределение */
+    }
+
     .graph-container {
         display: flex;
         gap: 20px;
@@ -458,7 +476,7 @@
         <div class="graph-svg-container">
             {{ svg_content|safe }}
         </div>
-
+        <div class="resizer" id="main-resizer"></div>
         <div class="graph-data-container">
             <h2 class="data-section-title">История выполнения</h2>
             <div class="states-table-container">
@@ -526,6 +544,8 @@ document.addEventListener('DOMContentLoaded', function() {
     let allEvents = [];
     let stateHistory = [];
     let transitions = {};
+    const stateRowMap = new Map();
+    const subgraphStateRowMap = new Map();
 
     class FilteredEventSource {
         constructor(url) {
@@ -571,6 +591,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     document.getElementById('execution-progress').style.width = `${data.progress}%`;
                 }
 
+                // Полностью игнорируем служебные узлы в основном потоке событий
+                if (data.state && (data.state === '__BEGIN__' || data.state === '__END__')) {
+                    // Для __END__ вызываем завершение выполнения
+                    if (data.state === '__END__' && data.event === 'state_enter') {
+                        handleExecutionComplete(data);
+                    }
+                    return;
+                }
+
                 // Обработка основного графа
                 if (data.graph_id === currentGraphName) {
                     switch(data.event) {
@@ -608,6 +637,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     }
                 }
+
                 if (data.event === 'state_enter') {
                     if (data.state) {
                         // Добавляем состояние в историю
@@ -674,6 +704,49 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     }
 
+    function initMainResizer() {
+        const resizer = document.getElementById('main-resizer');
+        const leftPanel = document.querySelector('.graph-svg-container');
+        const rightPanel = document.querySelector('.graph-data-container');
+
+        let isResizing = false;
+
+        resizer.addEventListener('mousedown', function(e) {
+            isResizing = true;
+            document.body.style.cursor = 'col-resize';
+            leftPanel.style.userSelect = 'none';
+            leftPanel.style.pointerEvents = 'none';
+            rightPanel.style.userSelect = 'none';
+            rightPanel.style.pointerEvents = 'none';
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (!isResizing) return;
+
+            const containerRect = document.querySelector('.graph-container').getBoundingClientRect();
+            const xPosition = e.clientX - containerRect.left;
+
+            // Вычисляем новые размеры в процентах
+            const leftWidth = (xPosition / containerRect.width) * 100;
+            const rightWidth = 100 - leftWidth - (10 / containerRect.width) * 100; // 10px - ширина resizer
+
+            leftPanel.style.flex = `${leftWidth} 1 0`;
+            rightPanel.style.flex = `${rightWidth} 1 0`;
+        });
+
+        document.addEventListener('mouseup', function() {
+            isResizing = false;
+            document.body.style.cursor = '';
+            leftPanel.style.userSelect = '';
+            leftPanel.style.pointerEvents = '';
+            rightPanel.style.userSelect = '';
+            rightPanel.style.pointerEvents = '';
+        });
+    }
+
+    // Инициализируем основной resizer
+    initMainResizer();
+
     function highlightStateInSubgraph(stateName, isActive) {
         const modalContent = document.getElementById('subgraph-content');
         if (!modalContent) return;
@@ -710,10 +783,14 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function addStateToTable(state, data, eventTime, graphId) {
+        // Пропускаем служебные узлы __BEGIN__ и __END__
+        if (state === '__BEGIN__' || state === '__END__') {
+            return null;
+        }
+
         // Проверяем, нет ли уже такого состояния в таблице
-        //const existingRow = document.querySelector(`#states-body tr[data-state="${state}"][data-graph="${graphId}"]`);
         const existingRow = document.querySelector(
-        `#states-body tr[data-state="${state}"][data-time="${eventTime}"][data-graph="${graphId}"]`
+            `#states-body tr[data-state="${state}"][data-time="${eventTime}"][data-graph="${graphId}"]`
         );
         if (existingRow) {
             return existingRow;
@@ -753,15 +830,15 @@ document.addEventListener('DOMContentLoaded', function() {
         return row;
     }
 
-    const stateRowMap = new Map();
-    const subgraphStateRowMap = new Map();
-
-    function getPureStateName(stateName, subgraphName) {
-        return stateName.split('_', 2)[1] ?? state;
-    }
 
     // Функция добавления состояния в таблицу подграфа
+    // Функция добавления состояния в таблицу подграфа
     function addStateToSubgraphTable(stateName, data, eventTime, graphName) {
+        // Пропускаем служебные узлы в подграфах
+        if (stateName === '__BEGIN__' || stateName === '__END__') {
+            return;
+        }
+
         const tableBody = document.querySelector('#subgraph-states-body');
         if (!tableBody) return;
 
@@ -858,8 +935,6 @@ document.addEventListener('DOMContentLoaded', function() {
             initEdgeAttributes(svgContainer);
             debugEdgeInfo(); // Добавляем отладочную информацию
 
-            // Тестовое подсвечивание ребра при загрузке
-            highlightEdge('__BEGIN__', 'ST1', true);
         }, 500); // Увеличиваем задержку для полной загрузки SVG
     }
     //----
@@ -1316,14 +1391,20 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('btn-pause').disabled = true;
         document.getElementById('execution-progress').style.width = '100%';
 
-        // Добавляем сообщение о завершении
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td colspan="3" style="color: var(--success); font-weight: 500; text-align: center;">
-                <i class="fas fa-check-circle"></i> Выполнение завершено
-            </td>
-        `;
-        statesBody.appendChild(row);
+        // Добавляем сообщение о завершении только здесь
+        // Проверяем, нет ли уже сообщения о завершении
+        const existingCompletion = document.querySelector('#states-body tr.completion-message');
+        if (!existingCompletion) {
+            const row = document.createElement('tr');
+            row.className = 'completion-message';
+            row.innerHTML = `
+                <td colspan="3" style="color: var(--success); font-weight: 500; text-align: center;">
+                    <i class="fas fa-check-circle"></i> Выполнение завершено
+                </td>
+            `;
+            statesBody.appendChild(row);
+            row.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+        }
     }
 
     // Функция подсветки состояния
