@@ -3,20 +3,30 @@ import queue
 import re
 import shutil
 import time
+import tempfile
+import os
 
+from collections import deque
 from django.core.exceptions import PermissionDenied
 from django.shortcuts import render, get_object_or_404
 from django.urls import reverse
 from django.utils.safestring import mark_safe
+from django.shortcuts import render, redirect
+from django.contrib import messages
+from django.contrib.admin.views.decorators import staff_member_required
 
 from comwpc.models import Graph
 import graphviz
 from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 from django.contrib.admin.views.decorators import staff_member_required
-
 from django.contrib.auth.decorators import login_required
 
 from config import settings
+from .forms import DotImportForm
+from .models import Graph, State, Edge, Transfer
+from comsdk.parser import Parser
+from comsdk.graph import Graph as ComsdkGraph, State as ComsdkState
+
 
 execution_status = {}
 
@@ -28,25 +38,20 @@ def graph_interactive_view(request, graph_id):
 
     dot = graphviz.Digraph()
     dot.attr('node', shape='box')
-    #dot.attr(rankdir='LR')
     dot.attr(rankdir='TB')
     dot.attr('node', shape='rect', style='rounded,filled', fontname='Roboto')
 
-    # Добавляем состояния с атрибутом data-name
+    # Добавляем состояния с атрибутом data-name (исключая служебные узлы)
     for state in graph.state_set.all():
+        # Пропускаем служебные узлы
+        if state.name in ['__BEGIN__', '__END__']:
+            continue
+
         attrs = {
             'data-name': state.name,
             'data-id': str(state.id)
         }
 
-        #if state.subgraph:
-        #    attrs.update({
-        #        'shape': 'folder',
-        #        'color': 'orange',
-        #        'style': 'filled',
-        #        'fillcolor': 'moccasin',
-        #        'URL': f"javascript:openSubgraph({state.subgraph.id})"
-        #    })
         if state.subgraph:
             base_name = state.subgraph.name
             if re.match(r'^.*\d+$', base_name):
@@ -68,17 +73,24 @@ def graph_interactive_view(request, graph_id):
                 'style': 'rounded,filled' if state.is_terminal else '',
                 'fillcolor': 'lightgreen' if state.is_terminal else 'lightblue'
             })
+
         dot.node(
             str(state.id),
             label=state.name,
             **{
-                'data-name': state.name,  # Явное указание атрибутов
+                'data-name': state.name,
                 'data-id': str(state.id),
                 'attributes': json.dumps(attrs)
             }
         )
-    # Добавляем переходы
+
+    # Добавляем переходы (исключая связанные со служебными узлами)
     for transfer in graph.transfer_set.all():
+        # Пропускаем переходы, связанные со служебными узлами
+        if (transfer.source.name in ['__BEGIN__', '__END__'] or
+                transfer.target.name in ['__BEGIN__', '__END__']):
+            continue
+
         dot.edge(
             str(transfer.source.id),
             str(transfer.target.id),
@@ -89,6 +101,7 @@ def graph_interactive_view(request, graph_id):
 
     # Добавляем JavaScript для интерактивности
     svg_str = svg_bytes.decode('utf-8')
+
     zoom_script = """
     <script>
     function enableZoom(svgElement) {
@@ -137,8 +150,6 @@ def graph_interactive_view(request, graph_id):
     """
 
     svg_str = svg_str.replace('<svg ', '<svg style="max-width: 100%; height: auto;" ')
-
-    # Модифицируем SVG для добавления data-атрибутов
     svg_str = add_data_attributes(svg_str, graph)
 
     return render(request, 'comwpc/graph_interactive.html', {
@@ -164,7 +175,10 @@ def get_transitions(request, graph_id):
 def add_data_attributes(svg_str, graph):
     """Добавляет data-атрибуты в SVG для интерактивности"""
     # Создаем маппинг id состояния -> имя
-    state_mapping = {str(state.id): state.name for state in graph.state_set.all()}
+    state_mapping = {}
+    for state in graph.state_set.all():
+        if state.name not in ['__BEGIN__', '__END__']:
+            state_mapping[str(state.id)] = state.name
 
     # Создаем маппинг для подграфов
     subgraph_mapping = {}
@@ -229,8 +243,11 @@ def graph_interactive_content(request, graph_id):
     dot.attr(rankdir='LR')
     dot.attr('node', shape='rect', style='rounded,filled', fontname='Roboto')
 
-    # Добавляем состояния
+    # Добавляем состояния (исключая служебные узлы)
     for state in graph.state_set.all():
+        if state.name in ['__BEGIN__', '__END__']:
+            continue
+
         if state.subgraph:
             dot.node(
                 str(state.id),
@@ -251,8 +268,12 @@ def graph_interactive_content(request, graph_id):
                 fillcolor='lightgreen' if state.is_terminal else 'lightblue'
             )
 
-    # Добавляем переходы
+    # Добавляем переходы (исключая связанные со служебными узлами)
     for transfer in graph.transfer_set.all():
+        if (transfer.source.name in ['__BEGIN__', '__END__'] or
+                transfer.target.name in ['__BEGIN__', '__END__']):
+            continue
+
         dot.edge(
             str(transfer.source.id),
             str(transfer.target.id),
@@ -285,7 +306,12 @@ def graph_svg_view(request, graph_id):
              width='1.5',
              height='0.8')
 
+    # Фильтруем состояния, исключая служебные узлы
     for state in graph.state_set.all():
+        # Пропускаем служебные узлы
+        if state.name in ['__BEGIN__', '__END__']:
+            continue
+
         if state.subgraph:
             base_name = state.subgraph.name
             if re.match(r'^.*\d+$', base_name):
@@ -319,8 +345,13 @@ def graph_svg_view(request, graph_id):
                     fillcolor='#f0f7ff'  # Светло-голубой
                 )
 
-    # Добавляем переходы
+    # Добавляем переходы, исключая те, что связаны со служебными узлами
     for transfer in graph.transfer_set.all():
+        # Пропускаем переходы, связанные со служебными узлами
+        if (transfer.source.name in ['__BEGIN__', '__END__'] or
+                transfer.target.name in ['__BEGIN__', '__END__']):
+            continue
+
         dot.edge(
             str(transfer.source.id),
             str(transfer.target.id),
@@ -341,18 +372,6 @@ def graph_svg_view(request, graph_id):
     )
 
     return HttpResponse(svg_str, content_type='image/svg+xml')
-
-# Для парсинга графа
-from django.shortcuts import render, redirect
-from django.contrib import messages
-from django.contrib.admin.views.decorators import staff_member_required
-from .forms import DotImportForm
-from .models import Graph, State, Edge, Transfer
-from comsdk.parser import Parser
-from comsdk.graph import Graph as ComsdkGraph, State as ComsdkState
-import tempfile
-import os
-from collections import deque
 
 
 @staff_member_required
@@ -752,8 +771,6 @@ def start_execution(request, graph_id):
 
     initial_data = json.loads(request.POST.get('data', '{}'))
     initial_data.setdefault("a", 10)
-
-    # ТОЛЬКО вызов Celery задачи
     execute_graph_task.delay(
         graph.raw_dot,
         session_id,
