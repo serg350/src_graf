@@ -8,6 +8,7 @@ import os
 
 from collections import deque
 from django.core.exceptions import PermissionDenied
+from django.db.models import Count
 from django.shortcuts import render, get_object_or_404
 from django.urls import reverse
 from django.utils.safestring import mark_safe
@@ -20,6 +21,8 @@ import graphviz
 from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 
 from config import settings
 from .forms import DotImportForm
@@ -29,7 +32,121 @@ from comsdk.graph import Graph as ComsdkGraph, State as ComsdkState
 
 
 execution_status = {}
+# -------------------------------------------------------------------
+def serialize_graph_recursive(graph):
+    """
+    Сериализует граф и, для каждой ноды, добавляет поле 'subgraph' если есть.
+    Возвращает dict с keys: id, name, nodes, edges
+    nodes: [{id, label, is_terminal, subgraph_id, subgraph (or None)}]
+    edges: [{id, source, target, label}]
+    """
+    nodes = []
+    for s in graph.state_set.exclude(name__in=["__BEGIN__", "__END__"]):
+        # допустим, у s есть поле subgraph (ForeignKey на Graph) или None
+        subgraph_obj = getattr(s, "subgraph", None)
+        subgraph_data = None
+        if subgraph_obj:
+            # Рекурсивно сериализуем подграф
+            subgraph_data = serialize_graph_recursive(subgraph_obj)
 
+        nodes.append({
+            "id": str(s.id),
+            "label": s.name,
+            "is_terminal": bool(getattr(s, "is_terminal", False)),
+            "subgraph_id": subgraph_obj.id if subgraph_obj else None,
+            "subgraph": subgraph_data,
+        })
+
+    edges = []
+    for t in graph.transfer_set.all():
+        # убираем спец. ноды если нужно
+        if t.source.name in ["__BEGIN__", "__END__"] or t.target.name in ["__BEGIN__", "__END__"]:
+            continue
+        edges.append({
+            "id": f"{t.source.id}-{t.target.id}",
+            "source": str(t.source.id),
+            "target": str(t.target.id),
+            "label": (t.edge.comment if hasattr(t, "edge") and t.edge else "") or ""
+        })
+
+    return {
+        "id": graph.id,
+        "name": graph.name,
+        "nodes": nodes,
+        "edges": edges,
+    }
+
+
+def graph_deep_json(request, graph_id):
+    """
+    Полный endpoint: возвращает граф + все вложенные подграфы рекурсивно.
+    GET /api/graphs/<id>/deep/
+    """
+    graph = get_object_or_404(Graph, pk=graph_id)
+    data = serialize_graph_recursive(graph)
+    return JsonResponse(data, safe=True)
+
+#@staff_member_required
+def graph_json(request, graph_id):
+    graph = get_object_or_404(Graph, pk=graph_id)
+
+    # Узлы
+    nodes = []
+    for s in graph.state_set.exclude(name__in=["__BEGIN__", "__END__"]):
+        nodes.append({
+            "id": str(s.id),
+            "label": s.name,
+            "is_terminal": s.is_terminal,
+            "subgraph": s.subgraph.id if s.subgraph else None,
+        })
+
+    # Рёбра
+    edges = []
+    for t in graph.transfer_set.all():
+        if t.source.name in ["__BEGIN__", "__END__"]:
+            continue
+        if t.target.name in ["__BEGIN__", "__END__"]:
+            continue
+        edges.append({
+            "id": f"{t.source.id}-{t.target.id}",
+            "source": str(t.source.id),
+            "target": str(t.target.id),
+            "label": t.edge.comment if t.edge else "",
+        })
+
+    return JsonResponse({
+        "id": graph.id,
+        "name": graph.name,
+        "nodes": nodes,
+        "edges": edges
+    })
+
+def graphs_list_json(request):
+    """
+    GET /api/graphs/
+    Возвращает список всех графов (без вложенных структур)
+    """
+
+    graphs = (
+        Graph.objects
+        .annotate(
+            nodes_count=Count("state", distinct=True),
+            edges_count=Count("transfer", distinct=True)
+        )
+        .order_by("name")
+    )
+
+    data = []
+    for g in graphs:
+        data.append({
+            "id": g.id,
+            "name": g.name,
+            "nodes_count": g.nodes_count,
+            "edges_count": g.edges_count,
+        })
+
+    return JsonResponse(data, safe=False)
+# -------------------------------------------------------------------
 
 @staff_member_required
 def graph_interactive_view(request, graph_id):
@@ -373,8 +490,76 @@ def graph_svg_view(request, graph_id):
 
     return HttpResponse(svg_str, content_type='image/svg+xml')
 
+@csrf_exempt
+@require_POST
+def import_dot_api(request):
+    form = DotImportForm(request.POST, request.FILES)
 
-@staff_member_required
+    if not form.is_valid():
+        return JsonResponse({
+            'success': False,
+            'error': 'Неверный формат файла'
+        }, status=400)
+
+    try:
+        dot_file = request.FILES['dot_file']
+
+        temp_dir = tempfile.mkdtemp()
+        main_temp_path = os.path.join(temp_dir, dot_file.name)
+
+        with open(main_temp_path, 'wb+') as destination:
+            for chunk in dot_file.chunks():
+                destination.write(chunk)
+
+        parser = Parser()
+        comsdk_graph = parser.parse_file(main_temp_path)
+        graph_name = parser.fact.name
+
+        existing_main_graph = Graph.objects.filter(
+            name=graph_name,
+            is_subgraph=False
+        ).first()
+
+        if existing_main_graph:
+            return JsonResponse({
+                'success': False,
+                'error': f'Граф "{graph_name}" уже существует',
+                'graph_id': existing_main_graph.id
+            }, status=409)
+
+        processed_graphs = {}
+        django_graph = process_graph_recursively(
+            parser=parser,
+            comsdk_graph=comsdk_graph,
+            dot_path=main_temp_path,
+            temp_dir=temp_dir,
+            processed_graphs=processed_graphs,
+            parent_graph=None
+        )
+
+        stats = {
+            'states': django_graph.state_set.count(),
+            'edges': Edge.objects.filter(transfer__graph=django_graph).count(),
+            'subgraphs': Graph.objects.filter(parent_graph=django_graph).count()
+        }
+
+        return JsonResponse({
+            'success': True,
+            'graph_id': django_graph.id,
+            'graph_name': django_graph.name,
+            'stats': stats
+        })
+
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+
+#@staff_member_required
+@csrf_exempt
+@require_POST
 def import_dot(request):
     if request.method == 'POST':
         form = DotImportForm(request.POST, request.FILES)
