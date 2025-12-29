@@ -1,0 +1,45 @@
+import React from "react";
+import { Handle, Position } from "reactflow";
+import { FolderTree } from "lucide-react";
+
+export default function SubgraphNode({ data }) {
+  return (
+    <div
+      style={{
+        padding: "10px 14px",
+        background: "#eef2ff",
+        border: "2px solid #6366f1",
+        borderRadius: 10,
+        fontSize: 13,
+        fontWeight: 600,
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        cursor: "pointer",
+        position: "relative"
+      }}
+      onClick={(e) => {
+        e.stopPropagation();
+        data.onOpenSubgraph?.(data.subgraphId);
+      }}
+    >
+      <FolderTree size={16} color="#4f46e5" />
+      <span>{data.label}</span>
+
+      {/* обязательные handle'ы */}
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="in"
+        style={{ background: "#4f46e5" }}
+      />
+
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="out"
+        style={{ background: "#4f46e5" }}
+      />
+    </div>
+  );
+}
