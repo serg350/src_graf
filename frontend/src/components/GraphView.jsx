@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import ReactFlow, { MiniMap, Controls, Background } from "reactflow";
 import "reactflow/dist/style.css";
 
@@ -10,95 +10,152 @@ import SubgraphModal from "./SubgraphModal";
 import SubgraphNode from "./SubgraphNode";
 import CustomEdge from "./CustomEdge";
 
+/* ───────────────────────────────────────────── */
+const NODE_TYPES = { subgraph: SubgraphNode };
+const EDGE_TYPES = { default: CustomEdge };
+/* ───────────────────────────────────────────── */
+
 export default function GraphView({
   graphId,
-  orientation,
-  showSubgraphs,
+  orientation = "TB",
+  showSubgraphs = true,
+  executionEvent,
   onHistoryAdd,
+  children,
 }) {
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
-  const [modalGraph, setModalGraph] = useState(null);
-  const [breadcrumb, setBreadcrumb] = useState([]);
-  const nodeTypes = {
-      subgraph: SubgraphNode,
-  };
 
-  const edgeTypes = {
-      default: CustomEdge,
-  };
+  const prevStateRef = useRef(null);
 
-  const openSubgraph = (id) => {
-    loadGraphDeep(id).then((g) => {
-      setBreadcrumb((prev) => [...prev, { id, label: g.name }]);
-      setModalGraph({ ...g, parentId: graphId });
-    });
-  };
-
-  const closeSubgraph = () => {
-    setBreadcrumb((prev) => prev.slice(0, -1));
-    setModalGraph(null);
-  };
-
+  /* ───────────── LOAD GRAPH ───────────── */
   useEffect(() => {
     loadGraphDeep(graphId).then((rootGraph) => {
       const flat = flattenGraphWithSubgraphs(rootGraph, showSubgraphs);
-
       const dagre = applyDagreLayout(flat.nodes, flat.edges, orientation);
 
-      const layoutedNodes = dagre.nodes.map((n) => ({
+      const ns = dagre.nodes.map((n) => ({
         ...n,
         id: String(n.id),
-        draggable: true,
-      }));
-
-      const normalizedEdges = dagre.edges.map((e) => ({
-        id: String(e.id),
-        source: String(e.source),
-        target: String(e.target),
-        label: e.label || "",
-      }));
-
-      const sanitizedEdges = normalizedEdges.map((e) => ({
-        ...e,
-        markerEnd: "arrowclosed",
-      }));
-
-      const finalNodes = layoutedNodes.map((n) => ({
-        ...n,
-        type: n.type === "subgraph" ? "subgraph" : n.type,
+        type: n.type === "subgraph" ? "subgraph" : undefined,
         data: {
           ...n.data,
-          onOpenSubgraph: openSubgraph,
+          stateId: n.data?.label,
+        },
+        style: {
+          border: "1px solid #999",
+          background: "#fff",
+          transition: "all 0.2s ease",
         },
       }));
 
-      setNodes(finalNodes);
-      setEdges(sanitizedEdges);
+      const es = dagre.edges.map((e) => {
+        const from = ns.find((n) => n.id === String(e.source))?.data.stateId;
+        const to = ns.find((n) => n.id === String(e.target))?.data.stateId;
+
+        return {
+          id: String(e.id),
+          source: String(e.source),
+          target: String(e.target),
+          type: "default",
+          data: {
+            fromState: from,
+            toState: to,
+            active: false,
+          },
+        };
+      });
+
+      setNodes(ns);
+      setEdges(es);
+      prevStateRef.current = null;
     });
   }, [graphId, orientation, showSubgraphs]);
 
-    return (
-      <div style={{ width: "100%", height: "100%" }}>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          fitView
-          minZoom={0.1}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-        >
-          <MiniMap />
-          <Controls />
-          <Background />
-        </ReactFlow>
+  /* ───────────── SSE → HIGHLIGHT ───────────── */
+  useEffect(() => {
+    if (!executionEvent) return;
 
-        <SubgraphModal
-          open={!!modalGraph}
-          onClose={closeSubgraph}
-          graph={modalGraph}
-          breadcrumb={breadcrumb}
-        />
-      </div>
+    const { event, state, timestamp } = executionEvent;
+    console.log("[HISTORY]", {
+      event,
+      state
+    });
+    // 🧾 история — стабильно
+    //onHistoryAdd?.(
+    //  `[${new Date(timestamp * 1000).toLocaleTimeString()}] ${event}: ${state}`
+    //);
+    //onHistoryAdd?.({ type: state, event, timestamp: executionEvent.timestamp, });
+    onHistoryAdd?.({
+      title: state,          // ← будет жирным
+      payload: executionEvent.data ?? {},
+      event,
+      timestamp,
+    });
+
+    if (event !== "state_enter") return;
+
+    // 🟢 узлы
+    setNodes((nds) =>
+      nds.map((n) =>
+        n.data.stateId === state
+          ? {
+              ...n,
+              style: {
+                ...n.style,
+                border: "3px solid #22c55e",
+                background: "#dcfce7",
+              },
+            }
+          : {
+              ...n,
+              style: {
+                ...n.style,
+                border: "1px solid #999",
+                background: "#fff",
+              },
+            }
+      )
     );
+
+    // 🟠 рёбра
+    const prev = prevStateRef.current;
+
+    setEdges((eds) =>
+      eds.map((e) => ({
+        ...e,
+        data: {
+          ...e.data,
+          active:
+            prev &&
+            e.data.fromState === prev &&
+            e.data.toState === state,
+        },
+      }))
+    );
+
+    prevStateRef.current = state;
+  }, [executionEvent]);
+
+  /* ───────────────────────────────────────────── */
+
+  return (
+    <div style={{ width: "100%", height: "100%" }}>
+      {children}
+
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={NODE_TYPES}
+        edgeTypes={EDGE_TYPES}
+        fitView
+      >
+        <MiniMap />
+        <Controls />
+        <Background />
+      </ReactFlow>
+
+      <SubgraphModal />
+    </div>
+  );
 }

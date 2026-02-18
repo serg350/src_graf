@@ -22,7 +22,7 @@ from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_POST, require_http_methods
 
 from config import settings
 from .forms import DotImportForm
@@ -949,7 +949,9 @@ event_service = get_event_service()
 from config.tasks import execute_graph_task
 
 
-@login_required
+#@login_required
+#@csrf_exempt
+#@require_http_methods(["POST", "OPTIONS"])
 def start_execution(request, graph_id):
     graph = get_object_or_404(Graph, pk=graph_id)
     session_id = str(uuid.uuid4())

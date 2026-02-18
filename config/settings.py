@@ -13,6 +13,8 @@ import os
 from pathlib import Path
 from urllib.parse import urlparse
 
+from corsheaders.defaults import default_headers
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 SUBGRAPH_BASE_DIR = os.path.join(BASE_DIR)
@@ -28,6 +30,22 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+]
+
+CORS_ALLOW_CREDENTIALS = True
+
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    "content-type",
+    "authorization",
+    "x-csrftoken",
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:5173",
+]
+
 
 # Application definition
 
@@ -40,6 +58,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     #'django_extensions',
     'comwpc',
+    'corsheaders',
 ]
 
 # Настройки Redis
@@ -71,6 +90,7 @@ EVENT_REDIS_CONFIG = {
 }
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
