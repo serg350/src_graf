@@ -61,13 +61,19 @@ export default function GraphVisLabLayout({ children }) {
   };
 
   // прокидываем props в GraphView / GraphListView
-  const childWithProps = React.isValidElement(children)
-    ? React.cloneElement(children, {
-        orientation,
-        showSubgraphs,
-        onHistoryAdd,
-      })
-    : children;
+  const childWithProps = React.Children.map(children, (child) => {
+  if (!React.isValidElement(child)) return child;
+
+  if (child.type?.name === "GraphView") {
+    return React.cloneElement(child, {
+      orientation,
+      showSubgraphs,
+      onHistoryAdd,
+    });
+  }
+
+  return child;
+  });
 
   return (
     <div

@@ -15,7 +15,7 @@ services:
 
   celery:
     build: .
-    command: celery -A config worker --loglevel=info
+    command: sh -c "pip install django-cors-headers && celery -A config worker --loglevel=info"
     volumes:
       - .:/app
     depends_on:
