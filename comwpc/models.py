@@ -6,6 +6,7 @@ class Graph(models.Model):
     parent_graph = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='subgraphs')
     is_subgraph = models.BooleanField(default=False)
     raw_dot = models.TextField(blank=True, null=True)
+    raw_aini = models.TextField(blank=True, null=True)
 
     class Meta:
         constraints = [

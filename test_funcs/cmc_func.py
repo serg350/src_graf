@@ -1,13 +1,9 @@
 def request_target_property(data):
-    """Запрос целевого свойства у пользователя"""
-    # В реальной реализации здесь будет форма aINI
-    data['E_target'] = 150.0  # Целевой модуль Юнга, ГПа
-    data['max_iterations'] = 20  # Максимальное число итераций
-    data['tolerance'] = 1.0  # Допустимая погрешность, ГПа
-
-    # Фиксированные свойства материалов
-    data['E_fiber'] = 230.0  # Модуль Юнга волокна, ГПа
-    data['E_matrix'] = 3.5  # Модуль Юнга матрицы, ГПа
+    """Проверка входных параметров, переданных из UI/aINI."""
+    required_fields = ("E_target", "max_iterations", "tolerance", "E_fiber", "E_matrix")
+    missing_fields = [name for name in required_fields if name not in data]
+    if missing_fields:
+        raise ValueError(f"Missing required input fields: {', '.join(missing_fields)}")
 
 
 def make_initial_guess(data):

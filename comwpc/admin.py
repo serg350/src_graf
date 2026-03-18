@@ -29,7 +29,7 @@ class GraphAdmin(admin.ModelAdmin):
     list_display = ('name', 'created_at', 'graph_preview')
     inlines = [TransferInline]
     readonly_fields = ('graph_preview', 'graph_interactive')
-    fields = ('name', 'parent_graph', 'is_subgraph', 'raw_dot', 'graph_preview', 'graph_interactive')
+    fields = ('name', 'parent_graph', 'is_subgraph', 'raw_dot', 'raw_aini', 'graph_preview', 'graph_interactive')
     search_fields = ('name',)  # Добавлено для автозаполнения
 
     def graph_preview(self, obj):

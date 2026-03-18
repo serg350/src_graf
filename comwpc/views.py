@@ -1,35 +1,32 @@
 import json
+import os
 import queue
 import re
 import shutil
-import time
 import tempfile
-import os
-
+import time
+import uuid
 from collections import deque
-from django.core.exceptions import PermissionDenied
-from django.db.models import Count
-from django.shortcuts import render, get_object_or_404
-from django.urls import reverse
-from django.utils.safestring import mark_safe
-from django.shortcuts import render, redirect
+from typing import Any, Dict
+
+import graphviz
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
-
-from comwpc.models import Graph
-import graphviz
+from django.db.models import Count
 from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
-from django.contrib.admin.views.decorators import staff_member_required
-from django.contrib.auth.decorators import login_required
+from django.shortcuts import get_object_or_404, render
+from django.urls import reverse
+from django.utils.safestring import mark_safe
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST, require_http_methods
+from django.views.decorators.http import require_http_methods, require_POST
 
 from config import settings
-from .forms import DotImportForm
-from .models import Graph, State, Edge, Transfer
+from config.tasks import execute_graph_task
 from comsdk.parser import Parser
-from comsdk.graph import Graph as ComsdkGraph, State as ComsdkState
-
+from .aini.aini_parser import parse_aini
+from .events import get_event_service
+from .forms import DotImportForm
+from .models import Edge, Graph, State, Transfer
 
 execution_status = {}
 # -------------------------------------------------------------------
@@ -152,6 +149,14 @@ def graphs_list_json(request):
 def graph_interactive_view(request, graph_id):
     graph = get_object_or_404(Graph, pk=graph_id)
     session_id = request.GET.get('session')
+    execution_input_schema = {"fields": []}
+    execution_input_error = ""
+
+    if graph.raw_aini:
+        try:
+            execution_input_schema = _build_execution_input_schema(graph.raw_aini)
+        except ValueError as exc:
+            execution_input_error = str(exc)
 
     dot = graphviz.Digraph()
     dot.attr('node', shape='box')
@@ -273,7 +278,9 @@ def graph_interactive_view(request, graph_id):
         'graph': graph,
         'execution_session': session_id,
         'svg_content': mark_safe(svg_str + zoom_script),
-        'is_main_graph': not graph.is_subgraph
+        'is_main_graph': not graph.is_subgraph,
+        'execution_input_schema': execution_input_schema,
+        'execution_input_error': execution_input_error,
     })
 
 
@@ -490,42 +497,206 @@ def graph_svg_view(request, graph_id):
 
     return HttpResponse(svg_str, content_type='image/svg+xml')
 
-@csrf_exempt
-@require_POST
-def import_dot_api(request):
-    form = DotImportForm(request.POST, request.FILES)
+def _save_uploaded_file(uploaded_file, target_dir):
+    target_path = os.path.join(target_dir, uploaded_file.name)
+    with open(target_path, "wb+") as destination:
+        for chunk in uploaded_file.chunks():
+            destination.write(chunk)
+    return target_path
 
-    if not form.is_valid():
-        return JsonResponse({
-            'success': False,
-            'error': 'Неверный формат файла'
-        }, status=400)
 
-    try:
-        dot_file = request.FILES['dot_file']
+def _read_and_validate_aini(request):
+    raw_aini = request.POST.get("raw_aini", "") or ""
+    aini_file = request.FILES.get("aini_file")
+    if aini_file is not None:
+        try:
+            raw_aini = aini_file.read().decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError("aINI file must be UTF-8 encoded") from exc
 
-        temp_dir = tempfile.mkdtemp()
-        main_temp_path = os.path.join(temp_dir, dot_file.name)
+    if raw_aini:
+        parse_aini(raw_aini)
 
-        with open(main_temp_path, 'wb+') as destination:
-            for chunk in dot_file.chunks():
-                destination.write(chunk)
+    return raw_aini
 
+
+def _extract_sample_from_aini_parameter(parameter: Dict[str, Any]) -> Any:
+    value_type = parameter.get("value_type")
+    value = parameter.get("value")
+
+    if value_type == "dim" and isinstance(value, dict):
+        return value.get("value")
+    if value_type == "interval" and isinstance(value, dict):
+        return value.get("current")
+    if value_type == "combobox" and isinstance(value, dict):
+        return value.get("current")
+    return value
+
+
+def _build_execution_input_schema(raw_aini: str) -> Dict[str, Any]:
+    parsed = parse_aini(raw_aini)
+    fields = []
+
+    for parameter in parsed["parameters"]:
+        sample = _extract_sample_from_aini_parameter(parameter)
+        input_type = "text"
+        if parameter.get("value_type") == "bool" or isinstance(sample, bool):
+            input_type = "checkbox"
+        elif parameter.get("value_type") == "combobox":
+            input_type = "select"
+        elif isinstance(sample, (int, float)) and not isinstance(sample, bool):
+            input_type = "number"
+
+        field = {
+            "name": parameter["name"],
+            "label": parameter["name"].split("$")[-1],
+            "section": parameter.get("section", "Input"),
+            "required": bool(parameter.get("required")),
+            "optional": bool(parameter.get("optional")),
+            "comment": parameter.get("comment", ""),
+            "value_type": parameter.get("value_type", "text"),
+            "input_type": input_type,
+            "sample": sample,
+            "options": [],
+        }
+
+        if parameter.get("value_type") == "combobox":
+            raw_options = parameter.get("value", {}).get("options", [])
+            field["options"] = [str(option) for option in raw_options]
+
+        fields.append(field)
+
+    return {"fields": fields}
+
+
+def _coerce_bool(value: Any, field_name: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+
+    raise ValueError(f"Invalid boolean value for field '{field_name}'")
+
+
+def _coerce_execution_value(raw_value: Any, parameter: Dict[str, Any]) -> Any:
+    field_name = parameter["name"]
+    sample = _extract_sample_from_aini_parameter(parameter)
+    value_type = parameter.get("value_type")
+
+    if value_type == "bool":
+        return _coerce_bool(raw_value, field_name)
+
+    if value_type == "combobox":
+        options = [str(option) for option in parameter.get("value", {}).get("options", [])]
+        as_text = str(raw_value)
+        if options and as_text not in options:
+            raise ValueError(f"Value '{as_text}' is not allowed for field '{field_name}'")
+        raw_value = as_text
+
+    if isinstance(sample, bool):
+        return _coerce_bool(raw_value, field_name)
+
+    if isinstance(sample, int) and not isinstance(sample, bool):
+        try:
+            return int(raw_value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid integer value for field '{field_name}'") from exc
+
+    if isinstance(sample, float):
+        try:
+            return float(raw_value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid numeric value for field '{field_name}'") from exc
+
+    return raw_value
+
+
+def _parse_execution_request_data(request) -> Dict[str, Any]:
+    payload: Any = {}
+
+    if request.content_type and "application/json" in request.content_type:
+        raw_body = request.body.decode("utf-8") if request.body else "{}"
+        try:
+            payload = json.loads(raw_body or "{}")
+        except json.JSONDecodeError as exc:
+            raise ValueError("Field data must contain valid JSON") from exc
+    elif "data" in request.POST:
+        raw_data = request.POST.get("data", "{}") or "{}"
+        try:
+            payload = {"data": json.loads(raw_data)}
+        except json.JSONDecodeError as exc:
+            raise ValueError("Field data must contain valid JSON") from exc
+    else:
+        payload = request.POST.dict()
+
+    if not isinstance(payload, dict):
+        raise ValueError("Field data must be a JSON object")
+
+    request_data: Any = payload.get("data", payload)
+    if isinstance(request_data, str):
+        try:
+            request_data = json.loads(request_data or "{}")
+        except json.JSONDecodeError as exc:
+            raise ValueError("Field data must contain valid JSON") from exc
+
+    if not isinstance(request_data, dict):
+        raise ValueError("Field data must be a JSON object")
+
+    return request_data
+
+
+def _prepare_execution_initial_data(graph: Graph, request_data: Dict[str, Any]) -> Dict[str, Any]:
+    if not graph.raw_aini:
+        return dict(request_data)
+
+    parsed = parse_aini(graph.raw_aini)
+    parameters = {parameter["name"]: parameter for parameter in parsed["parameters"]}
+
+    result: Dict[str, Any] = {}
+    missing_required = []
+
+    for field_name, parameter in parameters.items():
+        if field_name not in request_data or request_data[field_name] in ("", None):
+            if parameter.get("required"):
+                missing_required.append(field_name)
+            continue
+
+        result[field_name] = _coerce_execution_value(request_data[field_name], parameter)
+
+    if missing_required:
+        raise ValueError(f"Missing required aINI fields: {', '.join(missing_required)}")
+
+    for key, value in request_data.items():
+        if key not in result and key not in parameters:
+            result[key] = value
+
+    return result
+
+
+def _collect_graph_stats(django_graph):
+    return {
+        "states": django_graph.state_set.count(),
+        "edges": Edge.objects.filter(transfer__graph=django_graph).count(),
+        "subgraphs": Graph.objects.filter(parent_graph=django_graph).count(),
+    }
+
+
+def _import_graph_from_upload(dot_file, raw_aini=""):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        main_temp_path = _save_uploaded_file(dot_file, temp_dir)
         parser = Parser()
         comsdk_graph = parser.parse_file(main_temp_path)
         graph_name = parser.fact.name
 
-        existing_main_graph = Graph.objects.filter(
-            name=graph_name,
-            is_subgraph=False
-        ).first()
-
+        existing_main_graph = Graph.objects.filter(name=graph_name, is_subgraph=False).first()
         if existing_main_graph:
-            return JsonResponse({
-                'success': False,
-                'error': f'Граф "{graph_name}" уже существует',
-                'graph_id': existing_main_graph.id
-            }, status=409)
+            return None, None, existing_main_graph
 
         processed_graphs = {}
         django_graph = process_graph_recursively(
@@ -534,105 +705,100 @@ def import_dot_api(request):
             dot_path=main_temp_path,
             temp_dir=temp_dir,
             processed_graphs=processed_graphs,
-            parent_graph=None
+            parent_graph=None,
+            raw_aini=raw_aini,
         )
 
-        stats = {
-            'states': django_graph.state_set.count(),
-            'edges': Edge.objects.filter(transfer__graph=django_graph).count(),
-            'subgraphs': Graph.objects.filter(parent_graph=django_graph).count()
-        }
+        return django_graph, _collect_graph_stats(django_graph), None
+
+
+@csrf_exempt
+@require_POST
+def import_dot_api(request):
+    form = DotImportForm(request.POST, request.FILES)
+
+    if not form.is_valid():
+        return JsonResponse({
+            "success": False,
+            "error": "Invalid file format",
+        }, status=400)
+
+    try:
+        dot_file = request.FILES["dot_file"]
+        raw_aini = _read_and_validate_aini(request)
+        django_graph, stats, existing_main_graph = _import_graph_from_upload(dot_file, raw_aini=raw_aini)
+
+        if existing_main_graph:
+            return JsonResponse({
+                "success": False,
+                "error": f'Graph "{existing_main_graph.name}" already exists',
+                "graph_id": existing_main_graph.id,
+            }, status=409)
 
         return JsonResponse({
-            'success': True,
-            'graph_id': django_graph.id,
-            'graph_name': django_graph.name,
-            'stats': stats
+            "success": True,
+            "graph_id": django_graph.id,
+            "graph_name": django_graph.name,
+            "stats": stats,
         })
-
-    except Exception as e:
+    except ValueError as exc:
         return JsonResponse({
-            'success': False,
-            'error': str(e)
+            "success": False,
+            "error": str(exc),
+        }, status=400)
+    except Exception as exc:
+        return JsonResponse({
+            "success": False,
+            "error": str(exc),
         }, status=500)
 
 
 #@staff_member_required
 @csrf_exempt
-@require_POST
+@require_http_methods(["GET", "POST"])
 def import_dot(request):
-    if request.method == 'POST':
+    if request.method == "POST":
         form = DotImportForm(request.POST, request.FILES)
-        if form.is_valid():
-            dot_file = request.FILES['dot_file']
-
-            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-                try:
-                    temp_dir = tempfile.mkdtemp()
-                    main_temp_path = os.path.join(temp_dir, dot_file.name)
-
-                    with open(main_temp_path, 'wb+') as destination:
-                        for chunk in dot_file.chunks():
-                            destination.write(chunk)
-
-                    parser = Parser()
-                    comsdk_graph = parser.parse_file(main_temp_path)
-                    graph_name = parser.fact.name
-
-                    # Проверяем существование основного графа
-                    existing_main_graph = Graph.objects.filter(
-                        name=graph_name,
-                        is_subgraph=False
-                    ).first()
-
-                    if existing_main_graph:
-                        return JsonResponse({
-                            'success': False,
-                            'error': f'Граф "{graph_name}" уже существует (ID: {existing_main_graph.id})'
-                        })
-
-                    # Обрабатываем граф рекурсивно
-                    processed_graphs = {}
-                    django_graph = process_graph_recursively(
-                        parser=parser,
-                        comsdk_graph=comsdk_graph,
-                        dot_path=main_temp_path,
-                        temp_dir=temp_dir,
-                        processed_graphs=processed_graphs,
-                        parent_graph=None
-                    )
-
-                    stats = {
-                        'states': django_graph.state_set.count(),
-                        'edges': Edge.objects.filter(transfer__graph=django_graph).count(),
-                        'subgraphs': Graph.objects.filter(parent_graph=django_graph).count()
-                    }
-
-                    return JsonResponse({
-                        'success': True,
-                        'redirect_url': reverse('admin:comwpc_graph_change', args=[django_graph.id]),
-                        'stats': stats
-                    })
-                except Exception as e:
-                    return JsonResponse({
-                        'success': False,
-                        'error': str(e)
-                    })
-            else:
-                # Обработка для обычных запросов
-                try:
-                    form = DotImportForm()
-                # ... (код для обычных запросов)
-                except Exception as e:
-                    messages.error(request, f'Ошибка импорта: {str(e)}')
-        else:
+        if not form.is_valid():
             return JsonResponse({
-                'success': False,
-                'error': 'Неверный формат файла'
+                "success": False,
+                "error": "Invalid file format",
             })
 
+        dot_file = request.FILES["dot_file"]
+
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            try:
+                raw_aini = _read_and_validate_aini(request)
+                django_graph, stats, existing_main_graph = _import_graph_from_upload(dot_file, raw_aini=raw_aini)
+
+                if existing_main_graph:
+                    return JsonResponse({
+                        "success": False,
+                        "error": f'Graph "{existing_main_graph.name}" already exists (ID: {existing_main_graph.id})',
+                    })
+
+                return JsonResponse({
+                    "success": True,
+                    "redirect_url": reverse("admin:comwpc_graph_change", args=[django_graph.id]),
+                    "stats": stats,
+                })
+            except ValueError as exc:
+                return JsonResponse({
+                    "success": False,
+                    "error": str(exc),
+                })
+            except Exception as exc:
+                return JsonResponse({
+                    "success": False,
+                    "error": str(exc),
+                })
+
+        messages.info(request, "Use AJAX form for import")
+
     form = DotImportForm()
-    return render(request, 'admin/import_dot.html', {'form': form})
+    return render(request, "admin/import_dot.html", {"form": form})
+
 
 def import_progress(request):
     def event_stream():
@@ -646,7 +812,7 @@ def import_progress(request):
     return response
 
 
-def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processed_graphs, parent_graph=None):
+def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processed_graphs, parent_graph=None, raw_aini=""):
     """Рекурсивно обрабатывает граф и его подграфы"""
     if dot_path in processed_graphs:
         return processed_graphs[dot_path]
@@ -674,6 +840,7 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
         graph = Graph.objects.create(
             name=graph_name,
             raw_dot=dot_content,
+            raw_aini=raw_aini if parent_graph is None else "",
             is_subgraph=parent_graph is not None,
             parent_graph=parent_graph
         )
@@ -939,14 +1106,7 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
 
     return graph
 
-from .events import get_event_service
-from django.http import JsonResponse
-import uuid
-import threading
-
 event_service = get_event_service()
-
-from config.tasks import execute_graph_task
 
 
 #@login_required
@@ -956,8 +1116,12 @@ def start_execution(request, graph_id):
     graph = get_object_or_404(Graph, pk=graph_id)
     session_id = str(uuid.uuid4())
 
-    initial_data = json.loads(request.POST.get('data', '{}'))
-    initial_data.setdefault("a", 10)
+    try:
+        request_data = _parse_execution_request_data(request)
+        initial_data = _prepare_execution_initial_data(graph, request_data)
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
     execute_graph_task.delay(
         graph.raw_dot,
         session_id,
@@ -965,8 +1129,9 @@ def start_execution(request, graph_id):
     )
 
     return JsonResponse({
-        'session_id': session_id,
+        "session_id": session_id,
     })
+
 
 def execution_events(request, session_id):
     def event_generator():
@@ -1007,3 +1172,4 @@ def event_stream(session_id):
     finally:
         # Отписываемся при завершении
         event_service.unsubscribe(session_id, event_handler)
+
