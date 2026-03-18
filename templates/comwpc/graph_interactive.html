@@ -137,12 +137,40 @@
         gap: 12px;
     }
 
-    .execution-inputs {
+    .execution-summary {
         background-color: var(--surface);
         border-radius: 4px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         padding: 16px;
         border: 1px solid var(--divider);
+    }
+
+    .execution-summary-text {
+        margin: 0 0 12px 0;
+        color: var(--text-secondary);
+    }
+
+    .execution-summary-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .execution-summary-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: #eef4f8;
+        color: var(--primary);
+        font-size: 0.8rem;
+        font-weight: 500;
+    }
+
+    .execution-summary-badge.prefilled {
+        background: #edf7ed;
+        color: #2f7d32;
     }
 
     .execution-input-grid {
@@ -158,12 +186,31 @@
         background: #fafafa;
     }
 
+    .execution-input-section-title-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+
     .execution-input-section-title {
         font-size: 0.85rem;
         font-weight: 600;
-        margin-bottom: 10px;
         color: var(--text-secondary);
         text-transform: uppercase;
+    }
+
+    .execution-initial-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: #eef4ff;
+        color: var(--secondary);
+        font-size: 0.72rem;
+        font-weight: 600;
+        white-space: nowrap;
     }
 
     .execution-input-field {
@@ -193,6 +240,15 @@
         color: var(--text-secondary);
     }
 
+    .execution-input-initial {
+        font-size: 0.75rem;
+        color: var(--secondary);
+        background: #f1f6fb;
+        border: 1px solid #d8e6f0;
+        border-radius: 4px;
+        padding: 6px 8px;
+    }
+
     .execution-input-error {
         background-color: #ffe9e9;
         border: 1px solid #ef9a9a;
@@ -200,6 +256,85 @@
         color: #b71c1c;
         padding: 10px 12px;
         margin-bottom: 12px;
+    }
+
+    .execution-modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.45);
+        display: none;
+        z-index: 1200;
+    }
+
+    .execution-modal-backdrop.show {
+        display: block;
+    }
+
+    .execution-modal {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: min(820px, calc(100vw - 32px));
+        max-height: calc(100vh - 48px);
+        overflow: auto;
+        padding: 20px;
+        border-radius: 8px;
+        background: var(--surface);
+        border: 1px solid var(--divider);
+        box-shadow: 0 20px 45px rgba(15, 23, 42, 0.22);
+        display: none;
+        z-index: 1201;
+    }
+
+    .execution-modal.show {
+        display: block;
+    }
+
+    .execution-modal-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 16px;
+    }
+
+    .execution-modal-title {
+        margin: 0;
+        color: var(--primary);
+        font-size: 1.2rem;
+    }
+
+    .execution-modal-subtitle {
+        margin: 6px 0 0 0;
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+    }
+
+    .execution-modal-close {
+        border: 0;
+        background: transparent;
+        color: var(--text-secondary);
+        cursor: pointer;
+        font-size: 1.4rem;
+        line-height: 1;
+        padding: 0;
+    }
+
+    .execution-modal-error {
+        margin-top: 14px;
+        background-color: #ffe9e9;
+        border: 1px solid #ef9a9a;
+        border-radius: 4px;
+        color: #b71c1c;
+        padding: 10px 12px;
+    }
+
+    .execution-modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        margin-top: 18px;
     }
 
     .mui-button {
@@ -542,9 +677,42 @@
     {% endif %}
 
     {% if execution_input_schema.fields %}
-    <div class="execution-inputs">
+    <div class="execution-summary">
         <h2 class="data-section-title">Параметры запуска</h2>
+        <p class="execution-summary-text">
+            Поля из aINI запрашиваются перед запуском обхода. Начальные значения можно изменить перед стартом.
+        </p>
+        <div class="execution-summary-meta">
+            <span class="execution-summary-badge">
+                Полей: {{ execution_input_schema.fields|length }}
+            </span>
+            {% if execution_input_schema.prefilled_count %}
+            <span class="execution-summary-badge prefilled">
+                С начальными данными: {{ execution_input_schema.prefilled_count }}
+            </span>
+            {% endif %}
+        </div>
+    </div>
+
+    <div id="execution-start-backdrop" class="execution-modal-backdrop"></div>
+    <div id="execution-start-modal" class="execution-modal" aria-hidden="true">
+        <div class="execution-modal-header">
+            <div>
+                <h2 id="execution-start-modal-title" class="execution-modal-title">Параметры запуска</h2>
+                <p class="execution-modal-subtitle">
+                    Проверьте значения перед началом обхода. Поля с меткой aINI уже имеют начальные данные.
+                </p>
+            </div>
+            <button type="button" id="btn-start-close" class="execution-modal-close" aria-label="Закрыть">&times;</button>
+        </div>
         <div id="execution-input-form" class="execution-input-grid"></div>
+        <div id="execution-input-modal-error" class="execution-modal-error" hidden></div>
+        <div class="execution-modal-actions">
+            <button type="button" id="btn-start-cancel" class="mui-button">Отмена</button>
+            <button type="button" id="btn-start-confirm" class="mui-button primary">
+                <i class="fas fa-play"></i> Запустить обход
+            </button>
+        </div>
     </div>
     {% endif %}
     {% endif %}
@@ -631,8 +799,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const executionInputSchemaElement = document.getElementById('execution-input-schema');
     const executionInputSchema = executionInputSchemaElement
         ? JSON.parse(executionInputSchemaElement.textContent)
-        : { fields: [] };
+        : { fields: [], prefilled_count: 0 };
     const executionInputForm = document.getElementById('execution-input-form');
+    const executionStartModal = document.getElementById('execution-start-modal');
+    const executionStartBackdrop = document.getElementById('execution-start-backdrop');
+    const executionInputModalError = document.getElementById('execution-input-modal-error');
 
     renderExecutionInputFields();
 
@@ -1292,6 +1463,43 @@ document.addEventListener('DOMContentLoaded', function() {
         return JSON.stringify(filteredData, null, 2);
     }
 
+    function setExecutionInputModalError(message) {
+        if (!executionInputModalError) {
+            return;
+        }
+
+        if (!message) {
+            executionInputModalError.hidden = true;
+            executionInputModalError.textContent = '';
+            return;
+        }
+
+        executionInputModalError.hidden = false;
+        executionInputModalError.textContent = message;
+    }
+
+    function openExecutionStartModal() {
+        if (!executionStartModal || !executionStartBackdrop) {
+            return;
+        }
+
+        setExecutionInputModalError('');
+        executionStartModal.classList.add('show');
+        executionStartBackdrop.classList.add('show');
+        executionStartModal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeExecutionStartModal() {
+        if (!executionStartModal || !executionStartBackdrop) {
+            return;
+        }
+
+        executionStartModal.classList.remove('show');
+        executionStartBackdrop.classList.remove('show');
+        executionStartModal.setAttribute('aria-hidden', 'true');
+        setExecutionInputModalError('');
+    }
+
     function renderExecutionInputFields() {
         if (!executionInputForm || !executionInputSchema.fields || executionInputSchema.fields.length === 0) {
             return;
@@ -1311,10 +1519,22 @@ document.addEventListener('DOMContentLoaded', function() {
             const sectionEl = document.createElement('div');
             sectionEl.className = 'execution-input-section';
 
+            const titleRowEl = document.createElement('div');
+            titleRowEl.className = 'execution-input-section-title-row';
+
             const titleEl = document.createElement('div');
             titleEl.className = 'execution-input-section-title';
             titleEl.textContent = sectionName;
-            sectionEl.appendChild(titleEl);
+            titleRowEl.appendChild(titleEl);
+
+            if (fields.some(field => field.has_initial_value)) {
+                const badgeEl = document.createElement('span');
+                badgeEl.className = 'execution-initial-badge';
+                badgeEl.textContent = 'Начальные данные aINI';
+                titleRowEl.appendChild(badgeEl);
+            }
+
+            sectionEl.appendChild(titleRowEl);
 
             fields.forEach(field => {
                 const fieldEl = document.createElement('div');
@@ -1346,14 +1566,27 @@ document.addEventListener('DOMContentLoaded', function() {
                             ? 'checkbox'
                             : 'text';
                     if (field.input_type === 'number') {
-                        inputEl.step = 'any';
+                        inputEl.step = field.step ?? 'any';
+                        if (field.min !== null && field.min !== undefined) {
+                            inputEl.min = String(field.min);
+                        }
+                        if (field.max !== null && field.max !== undefined) {
+                            inputEl.max = String(field.max);
+                        }
                     }
                 }
 
                 inputEl.dataset.fieldName = field.name;
                 inputEl.required = !!field.required;
-                if (
-                    field.input_type !== 'checkbox' &&
+                if (field.input_type === 'checkbox') {
+                    inputEl.checked = !!field.initial_value;
+                } else if (
+                    field.initial_value !== null &&
+                    field.initial_value !== undefined &&
+                    field.initial_value !== ''
+                ) {
+                    inputEl.value = String(field.initial_value);
+                } else if (
                     field.sample !== null &&
                     field.sample !== undefined &&
                     field.sample !== ''
@@ -1361,6 +1594,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     inputEl.placeholder = String(field.sample);
                 }
                 fieldEl.appendChild(inputEl);
+
+                if (field.has_initial_value) {
+                    const initialEl = document.createElement('div');
+                    initialEl.className = 'execution-input-initial';
+                    initialEl.textContent = `Начальное значение: ${field.initial_value_label}`;
+                    fieldEl.appendChild(initialEl);
+                }
 
                 if (field.comment) {
                     const hintEl = document.createElement('small');
@@ -1790,7 +2030,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         // Обработчики для кнопок запуска
-        container.querySelector('#btn-start')?.addEventListener('click', startExecution);
+        container.querySelector('#btn-start')?.addEventListener('click', handleStartButtonClick);
     }
 
     function closeSubgraph() {
@@ -1798,14 +2038,7 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('modal-backdrop').style.display = 'none';
     }
 
-    // Функция запуска выполнения
-    function startExecution() {
-        const executionInput = collectExecutionInputData();
-        if (executionInput.error) {
-            alert(executionInput.error);
-            return;
-        }
-
+    function startExecution(executionData) {
         const btnStart = document.getElementById('btn-start');
         btnStart.disabled = true;
         document.getElementById('btn-pause').disabled = false;
@@ -1833,13 +2066,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 'X-CSRFToken': getCookie('csrftoken')
             },
             body: JSON.stringify({
-                data: executionInput.data,
+                data: executionData,
                 graph_id: currentGraphName
             })
         })
-        .then(response => {
-            if (!response.ok) throw new Error(`Ошибка сервера: ${response.status}`);
-            return response.json();
+        .then(async response => {
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(payload.error || `Ошибка сервера: ${response.status}`);
+            }
+            return payload;
         })
         .then(result => {
             // Обновляем страницу с новым session_id
@@ -1856,11 +2092,36 @@ document.addEventListener('DOMContentLoaded', function() {
             <td colspan="3" style="color: var(--success); font-weight: 500; text-align: center;">
                 <i class="fas fa-exclamation-circle"></i> Ошибка запуска выполнения
             </td>
-        `;
+            `;
             statesBody.appendChild(row);
 
             btnStart.disabled = false;
+            document.getElementById('btn-pause').disabled = true;
+            if (executionInputSchema.fields && executionInputSchema.fields.length > 0) {
+                openExecutionStartModal();
+                setExecutionInputModalError(error.message || 'Не удалось запустить обход');
+            }
         });
+    }
+
+    function handleStartButtonClick() {
+        if (executionInputSchema.fields && executionInputSchema.fields.length > 0) {
+            openExecutionStartModal();
+            return;
+        }
+
+        startExecution({});
+    }
+
+    function confirmStartExecution() {
+        const executionInput = collectExecutionInputData();
+        if (executionInput.error) {
+            setExecutionInputModalError(executionInput.error);
+            return;
+        }
+
+        closeExecutionStartModal();
+        startExecution(executionInput.data);
     }
 
 
@@ -1883,7 +2144,12 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Обработчики для кнопок запуска
-    document.getElementById('btn-start').addEventListener('click', startExecution);
+    document.getElementById('btn-start').addEventListener('click', handleStartButtonClick);
+
+    document.getElementById('btn-start-confirm')?.addEventListener('click', confirmStartExecution);
+    document.getElementById('btn-start-cancel')?.addEventListener('click', closeExecutionStartModal);
+    document.getElementById('btn-start-close')?.addEventListener('click', closeExecutionStartModal);
+    document.getElementById('execution-start-backdrop')?.addEventListener('click', closeExecutionStartModal);
 
     document.querySelector('.close-modal').addEventListener('click', function() {
         document.getElementById('subgraph-modal').style.display = 'none';

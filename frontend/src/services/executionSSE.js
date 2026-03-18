@@ -1,8 +1,8 @@
-import { API_BASE_URL } from "./apiClient";
+import { buildApiUrl } from "./apiClient";
 
 export function connectExecution(sessionId, onEvent) {
   const es = new EventSource(
-    `${API_BASE_URL}/execution/events/${sessionId}/`,
+    buildApiUrl(`/execution/events/${sessionId}/`),
     { withCredentials: true } // ← ВАЖНО
   );
 

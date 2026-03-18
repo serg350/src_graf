@@ -1,19 +1,20 @@
-import { API_BASE_URL } from "./apiClient";
+import { buildApiUrl } from "./apiClient";
 import { getCSRFToken } from "./csrf";
 
 export function startExecution(graphId, data = {}) {
-  return fetch(`${API_BASE_URL}/graph/${graphId}/start/`, {
+  return fetch(buildApiUrl(`/graph/${graphId}/start/`), {
     method: "POST",
     credentials: "include", // ← ВАЖНО
     headers: {
       "Content-Type": "application/json",
       "X-CSRFToken": getCSRFToken(), // ← ВАЖНО
     },
-    body: JSON.stringify(data),
-  }).then((r) => {
+    body: JSON.stringify({ data }),
+  }).then(async (r) => {
+    const payload = await r.json().catch(() => ({}));
     if (!r.ok) {
-      throw new Error(`HTTP ${r.status}`);
+      throw new Error(payload.error || `HTTP ${r.status}`);
     }
-    return r.json();
+    return payload;
   });
 }

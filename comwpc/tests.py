@@ -5,7 +5,7 @@ from django.test import RequestFactory, TestCase
 
 from .aini.aini_parser import build_initial_data, parse_aini
 from .models import Graph
-from .views import start_execution
+from .views import _build_execution_input_schema, start_execution
 
 
 RAW_AINI = """
@@ -40,6 +40,17 @@ class AINIParserTests(TestCase):
         self.assertEqual(data["Pressure"], 34)
         self.assertEqual(data["OutputFilename"], "ElasticResearch_34.res")
         self.assertTrue(data["CopyObjectToRep"])
+
+    def test_build_execution_input_schema_marks_initial_values(self):
+        schema = _build_execution_input_schema(RAW_AINI)
+        fields = {field["name"]: field for field in schema["fields"]}
+
+        self.assertEqual(fields["TaskName"]["initial_value"], "ElasticResearch")
+        self.assertTrue(fields["TaskName"]["has_initial_value"])
+        self.assertEqual(fields["Pressure"]["initial_value"], 34)
+        self.assertEqual(fields["Pressure"]["initial_value_label"], "34 [MPa]")
+        self.assertTrue(fields["CopyObjectToRep"]["initial_value"])
+        self.assertGreaterEqual(schema["prefilled_count"], 3)
 
 
 class StartExecutionAINITests(TestCase):

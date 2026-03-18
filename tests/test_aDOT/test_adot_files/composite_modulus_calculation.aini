@@ -1,0 +1,6 @@
+[INPUT] // Parameters for composite modulus optimization graph
+*E_target=150 [[GPa]] // Target Young modulus
+*max_iterations=20 // Maximum number of iterations
+*tolerance=1 [[GPa]] // Allowed error
+*E_fiber=230 [[GPa]] // Fiber Young modulus
+*E_matrix=3.5 [[GPa]] // Matrix Young modulus
