@@ -3,8 +3,10 @@ import { UploadCloud, FileText, Loader2 } from "lucide-react";
 
 export default function GraphImportPage() {
   const inputRef = useRef(null);
+  const ainiInputRef = useRef(null);
 
   const [file, setFile] = useState(null);
+  const [ainiFile, setAiniFile] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [loading, setLoading] = useState(false);
   const [log, setLog] = useState([]);
@@ -15,7 +17,17 @@ export default function GraphImportPage() {
   const onFileSelect = (f) => {
     if (!f) return;
     setFile(f);
-    logLine(`Файл выбран: ${f.name}`);
+    logLine(`Graph file selected: ${f.name}`);
+  };
+
+  const onAiniSelect = (f) => {
+    if (!f) return;
+    if (!f.name.toLowerCase().endsWith(".aini")) {
+      logLine("Error: aINI file must use .aini extension");
+      return;
+    }
+    setAiniFile(f);
+    logLine(`aINI file selected: ${f.name}`);
   };
 
   const onDrop = (e) => {
@@ -29,16 +41,19 @@ export default function GraphImportPage() {
 
     setLoading(true);
     setLog([]);
-    logLine("Начало импорта графа...");
+    logLine("Starting import...");
 
     const formData = new FormData();
     formData.append("dot_file", file);
+    if (ainiFile) {
+      formData.append("aini_file", ainiFile);
+    }
 
     try {
-        const res = await fetch("/api/comwpc/graph/import-dot/", {
-          method: "POST",
-          body: formData,
-        });
+      const res = await fetch("/api/comwpc/graph/import-dot/", {
+        method: "POST",
+        body: formData,
+      });
 
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
@@ -47,17 +62,17 @@ export default function GraphImportPage() {
       const data = await res.json();
 
       if (data.success) {
-        logLine("Импорт успешно завершён");
-        logLine(`ID графа: ${data.graph_id}`);
+        logLine("Import completed successfully");
+        logLine(`Graph ID: ${data.graph_id}`);
 
         setTimeout(() => {
           window.location.href = `/graphs/${data.graph_id}`;
         }, 800);
       } else {
-        logLine("Ошибка импорта");
+        logLine(`Import error: ${data.error || "Unknown error"}`);
       }
     } catch (err) {
-      logLine(`Ошибка: ${err.message}`);
+      logLine(`Error: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -82,9 +97,8 @@ export default function GraphImportPage() {
           boxShadow: "0 10px 30px rgba(0,0,0,0.06)",
         }}
       >
-        <h2 style={{ marginBottom: 16 }}>Импорт графа</h2>
+        <h2 style={{ marginBottom: 16 }}>Graph Import</h2>
 
-        {/* DROP ZONE */}
         <div
           onClick={() => inputRef.current.click()}
           onDragOver={(e) => {
@@ -105,10 +119,10 @@ export default function GraphImportPage() {
         >
           <UploadCloud size={36} color="#4f46e5" />
           <div style={{ marginTop: 12, fontWeight: 600 }}>
-            Перетащите файл сюда
+            Drag and drop graph file here
           </div>
           <div style={{ fontSize: 13, color: "#64748b" }}>
-            или нажмите для выбора (.dot / .adot)
+            or click to choose (.dot / .adot)
           </div>
 
           {file && (
@@ -136,7 +150,31 @@ export default function GraphImportPage() {
           />
         </div>
 
-        {/* ACTIONS */}
+        <div style={{ marginTop: 12 }}>
+          <button
+            type="button"
+            onClick={() => ainiInputRef.current.click()}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              background: "#334155",
+              color: "#fff",
+            }}
+          >
+            Choose aINI (optional)
+          </button>
+          {ainiFile && (
+            <span style={{ marginLeft: 10, fontSize: 13 }}>{ainiFile.name}</span>
+          )}
+          <input
+            ref={ainiInputRef}
+            type="file"
+            accept=".aini"
+            style={{ display: "none" }}
+            onChange={(e) => onAiniSelect(e.target.files[0])}
+          />
+        </div>
+
         <div style={{ marginTop: 16 }}>
           <button
             className="btn"
@@ -154,11 +192,10 @@ export default function GraphImportPage() {
             }}
           >
             {loading && <Loader2 size={16} className="spin" />}
-            {loading ? "Импорт..." : "Импортировать"}
+            {loading ? "Import..." : "Import"}
           </button>
         </div>
 
-        {/* LOG */}
         <div
           style={{
             marginTop: 24,
@@ -173,7 +210,7 @@ export default function GraphImportPage() {
           }}
         >
           {log.length === 0 && (
-            <div style={{ opacity: 0.5 }}>Лог импорта...</div>
+            <div style={{ opacity: 0.5 }}>Import log...</div>
           )}
           {log.map((l, i) => (
             <div key={i}>{l}</div>

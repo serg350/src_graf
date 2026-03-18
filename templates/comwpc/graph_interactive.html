@@ -137,6 +137,71 @@
         gap: 12px;
     }
 
+    .execution-inputs {
+        background-color: var(--surface);
+        border-radius: 4px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        padding: 16px;
+        border: 1px solid var(--divider);
+    }
+
+    .execution-input-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 12px;
+    }
+
+    .execution-input-section {
+        border: 1px solid var(--divider);
+        border-radius: 4px;
+        padding: 12px;
+        background: #fafafa;
+    }
+
+    .execution-input-section-title {
+        font-size: 0.85rem;
+        font-weight: 600;
+        margin-bottom: 10px;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+    }
+
+    .execution-input-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 10px;
+    }
+
+    .execution-input-field label {
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: var(--text-primary);
+    }
+
+    .execution-input-field input,
+    .execution-input-field select {
+        border: 1px solid var(--divider);
+        border-radius: 4px;
+        padding: 6px 8px;
+        background: #fff;
+        color: var(--text-primary);
+    }
+
+    .execution-input-hint {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+    }
+
+    .execution-input-error {
+        background-color: #ffe9e9;
+        border: 1px solid #ef9a9a;
+        border-radius: 4px;
+        color: #b71c1c;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+    }
+
     .mui-button {
         display: inline-flex;
         align-items: center;
@@ -469,6 +534,19 @@
             <div id="execution-progress" class="progress-bar" style="width: 0%"></div>
         </div>
     </div>
+
+    {% if execution_input_error %}
+    <div class="execution-input-error">
+        Ошибка разбора aINI: {{ execution_input_error }}
+    </div>
+    {% endif %}
+
+    {% if execution_input_schema.fields %}
+    <div class="execution-inputs">
+        <h2 class="data-section-title">Параметры запуска</h2>
+        <div id="execution-input-form" class="execution-input-grid"></div>
+    </div>
+    {% endif %}
     {% endif %}
 
     {% if is_main_graph %}
@@ -533,6 +611,10 @@
 
 <div id="modal-backdrop" class="modal-backdrop"></div>
 
+{% if is_main_graph %}
+{{ execution_input_schema|json_script:"execution-input-schema" }}
+{% endif %}
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const sessionId = "{{ execution_session|default_if_none:'' }}";
@@ -546,6 +628,13 @@ document.addEventListener('DOMContentLoaded', function() {
     let transitions = {};
     const stateRowMap = new Map();
     const subgraphStateRowMap = new Map();
+    const executionInputSchemaElement = document.getElementById('execution-input-schema');
+    const executionInputSchema = executionInputSchemaElement
+        ? JSON.parse(executionInputSchemaElement.textContent)
+        : { fields: [] };
+    const executionInputForm = document.getElementById('execution-input-form');
+
+    renderExecutionInputFields();
 
     class FilteredEventSource {
         constructor(url) {
@@ -1203,6 +1292,138 @@ document.addEventListener('DOMContentLoaded', function() {
         return JSON.stringify(filteredData, null, 2);
     }
 
+    function renderExecutionInputFields() {
+        if (!executionInputForm || !executionInputSchema.fields || executionInputSchema.fields.length === 0) {
+            return;
+        }
+
+        executionInputForm.innerHTML = '';
+        const sections = {};
+
+        executionInputSchema.fields.forEach(field => {
+            if (!sections[field.section]) {
+                sections[field.section] = [];
+            }
+            sections[field.section].push(field);
+        });
+
+        Object.entries(sections).forEach(([sectionName, fields]) => {
+            const sectionEl = document.createElement('div');
+            sectionEl.className = 'execution-input-section';
+
+            const titleEl = document.createElement('div');
+            titleEl.className = 'execution-input-section-title';
+            titleEl.textContent = sectionName;
+            sectionEl.appendChild(titleEl);
+
+            fields.forEach(field => {
+                const fieldEl = document.createElement('div');
+                fieldEl.className = 'execution-input-field';
+
+                const labelEl = document.createElement('label');
+                labelEl.textContent = `${field.label}${field.required ? ' *' : ''}`;
+                fieldEl.appendChild(labelEl);
+
+                let inputEl;
+                if (field.input_type === 'select') {
+                    inputEl = document.createElement('select');
+                    const emptyOption = document.createElement('option');
+                    emptyOption.value = '';
+                    emptyOption.textContent = '--';
+                    inputEl.appendChild(emptyOption);
+
+                    (field.options || []).forEach(optionValue => {
+                        const optionEl = document.createElement('option');
+                        optionEl.value = String(optionValue);
+                        optionEl.textContent = String(optionValue);
+                        inputEl.appendChild(optionEl);
+                    });
+                } else {
+                    inputEl = document.createElement('input');
+                    inputEl.type = field.input_type === 'number'
+                        ? 'number'
+                        : field.input_type === 'checkbox'
+                            ? 'checkbox'
+                            : 'text';
+                    if (field.input_type === 'number') {
+                        inputEl.step = 'any';
+                    }
+                }
+
+                inputEl.dataset.fieldName = field.name;
+                inputEl.required = !!field.required;
+                if (
+                    field.input_type !== 'checkbox' &&
+                    field.sample !== null &&
+                    field.sample !== undefined &&
+                    field.sample !== ''
+                ) {
+                    inputEl.placeholder = String(field.sample);
+                }
+                fieldEl.appendChild(inputEl);
+
+                if (field.comment) {
+                    const hintEl = document.createElement('small');
+                    hintEl.className = 'execution-input-hint';
+                    hintEl.textContent = field.comment;
+                    fieldEl.appendChild(hintEl);
+                }
+
+                sectionEl.appendChild(fieldEl);
+            });
+
+            executionInputForm.appendChild(sectionEl);
+        });
+    }
+
+    function collectExecutionInputData() {
+        if (!executionInputForm || !executionInputSchema.fields || executionInputSchema.fields.length === 0) {
+            return { data: {} };
+        }
+
+        const data = {};
+        const missingRequired = [];
+
+        executionInputSchema.fields.forEach(field => {
+            const selector = `[data-field-name="${field.name}"]`;
+            const inputEl = executionInputForm.querySelector(selector);
+            if (!inputEl) {
+                return;
+            }
+
+            if (field.input_type === 'checkbox') {
+                data[field.name] = inputEl.checked;
+                return;
+            }
+
+            const rawValue = (inputEl.value || '').trim();
+            if (rawValue === '') {
+                if (field.required) {
+                    missingRequired.push(field.name);
+                }
+                return;
+            }
+
+            if (field.input_type === 'number') {
+                const numericValue = Number(rawValue);
+                if (Number.isNaN(numericValue)) {
+                    missingRequired.push(field.name);
+                    return;
+                }
+                data[field.name] = numericValue;
+                return;
+            }
+
+            data[field.name] = rawValue;
+        });
+
+        if (missingRequired.length > 0) {
+            return { error: `Не заполнены обязательные поля: ${missingRequired.join(', ')}` };
+        }
+
+        return { data };
+    }
+
     function initResizer() {
         const resizer = document.getElementById('subgraph-resizer');
         const leftPanel = document.getElementById('subgraph-svg-container');
@@ -1579,6 +1800,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Функция запуска выполнения
     function startExecution() {
+        const executionInput = collectExecutionInputData();
+        if (executionInput.error) {
+            alert(executionInput.error);
+            return;
+        }
+
         const btnStart = document.getElementById('btn-start');
         btnStart.disabled = true;
         document.getElementById('btn-pause').disabled = false;
@@ -1593,7 +1820,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td colspan="3" style="color: var(--success); font-weight: 500; text-align: center;">
-                <i class="fas fa-check-circle"></i> Выполнение завершено
+                <i class="fas fa-play-circle"></i> Запуск выполнения...
             </td>
         `;
         statesBody.appendChild(row);
@@ -1606,7 +1833,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 'X-CSRFToken': getCookie('csrftoken')
             },
             body: JSON.stringify({
-                data: {},
+                data: executionInput.data,
                 graph_id: currentGraphName
             })
         })
@@ -1627,7 +1854,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const row = document.createElement('tr');
             row.innerHTML = `
             <td colspan="3" style="color: var(--success); font-weight: 500; text-align: center;">
-                <i class="fas fa-check-circle"></i> Выполнение завершено
+                <i class="fas fa-exclamation-circle"></i> Ошибка запуска выполнения
             </td>
         `;
             statesBody.appendChild(row);
