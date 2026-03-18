@@ -1,5 +1,9 @@
+import { buildApiUrl } from "./apiClient";
+
 export async function loadGraph(id) {
-  const r = await fetch(`/api/graphs/${id}/`);
+  const r = await fetch(buildApiUrl(`/api/graphs/${id}/`), {
+    credentials: "include",
+  });
   return r.json();
 }
 
@@ -20,6 +24,8 @@ export async function loadGraphDeep(id) {
 }
 
 export async function loadAllGraphs() {
-  const res = await fetch("/api/graphs/");
+  const res = await fetch(buildApiUrl("/api/graphs/"), {
+    credentials: "include",
+  });
   return res.json();
 }

@@ -1,6 +1,8 @@
 import React, { useRef, useState } from "react";
 import { UploadCloud, FileText, Loader2 } from "lucide-react";
 
+import { buildApiUrl } from "../services/apiClient";
+
 export default function GraphImportPage() {
   const inputRef = useRef(null);
   const ainiInputRef = useRef(null);
@@ -50,8 +52,9 @@ export default function GraphImportPage() {
     }
 
     try {
-      const res = await fetch("/api/comwpc/graph/import-dot/", {
+      const res = await fetch(buildApiUrl("/api/comwpc/graph/import-dot/"), {
         method: "POST",
+        credentials: "include",
         body: formData,
       });
 

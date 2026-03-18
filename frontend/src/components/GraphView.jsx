@@ -1,135 +1,224 @@
 import React, { useEffect, useRef, useState } from "react";
-import ReactFlow, { MiniMap, Controls, Background } from "reactflow";
+import ReactFlow, {
+  Background,
+  Controls,
+  MiniMap,
+  useEdgesState,
+  useNodesState,
+} from "reactflow";
 import "reactflow/dist/style.css";
 
 import { loadGraphDeep } from "../services/api";
 import { flattenGraphWithSubgraphs } from "../utils/graph_parser";
 import { applyDagreLayout } from "../utils/dagreLayout";
 
+import CustomEdge from "./CustomEdge";
 import SubgraphModal from "./SubgraphModal";
 import SubgraphNode from "./SubgraphNode";
-import CustomEdge from "./CustomEdge";
 
-/* ───────────────────────────────────────────── */
 const NODE_TYPES = { subgraph: SubgraphNode };
 const EDGE_TYPES = { default: CustomEdge };
-/* ───────────────────────────────────────────── */
+
+function getBaseNodeStyle(nodeType) {
+  if (nodeType === "subgraph") {
+    return {};
+  }
+
+  return {
+    border: "1px solid #94a3b8",
+    background: "#ffffff",
+    borderRadius: 10,
+    transition: "all 0.2s ease",
+  };
+}
+
+function findSubgraphById(graph, targetId, breadcrumb = []) {
+  if (!graph) {
+    return null;
+  }
+
+  const nextBreadcrumb = [...breadcrumb, { id: graph.id, label: graph.name }];
+  if (String(graph.id) === String(targetId)) {
+    return { graph, breadcrumb: nextBreadcrumb };
+  }
+
+  for (const subgraph of Object.values(graph.subgraphs || {})) {
+    const result = findSubgraphById(subgraph, targetId, nextBreadcrumb);
+    if (result) {
+      return result;
+    }
+  }
+
+  return null;
+}
+
+function buildFlowState(rootGraph, orientation, showSubgraphs, handleOpenSubgraph) {
+  const flat = flattenGraphWithSubgraphs(rootGraph, showSubgraphs);
+  const dagre = applyDagreLayout(flat.nodes, flat.edges, orientation);
+
+  const nodes = dagre.nodes.map((node) => {
+    const baseStyle = getBaseNodeStyle(node.type);
+
+    return {
+      ...node,
+      id: String(node.id),
+      draggable: true,
+      type: node.type === "subgraph" ? "subgraph" : undefined,
+      data: {
+        ...node.data,
+        stateId: node.data?.label,
+        baseStyle,
+        onOpenSubgraph: handleOpenSubgraph,
+      },
+      style: baseStyle,
+    };
+  });
+
+  const edges = dagre.edges.map((edge) => {
+    const from = nodes.find((node) => node.id === String(edge.source))?.data.stateId;
+    const to = nodes.find((node) => node.id === String(edge.target))?.data.stateId;
+
+    return {
+      id: String(edge.id),
+      source: String(edge.source),
+      target: String(edge.target),
+      type: "default",
+      label: edge.label,
+      data: {
+        fromState: from,
+        toState: to,
+        active: false,
+      },
+    };
+  });
+
+  return { nodes, edges };
+}
 
 export default function GraphView({
   graphId,
   orientation = "TB",
   showSubgraphs = true,
   executionEvent,
+  executionControls,
   onHistoryAdd,
+  onGraphMeta,
   children,
 }) {
-  const [nodes, setNodes] = useState([]);
-  const [edges, setEdges] = useState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [modalState, setModalState] = useState({
+    open: false,
+    graph: null,
+    breadcrumb: [],
+  });
 
   const prevStateRef = useRef(null);
+  const rootGraphRef = useRef(null);
 
-  /* ───────────── LOAD GRAPH ───────────── */
+  const handleOpenSubgraph = (subgraphId) => {
+    const match = findSubgraphById(rootGraphRef.current, subgraphId);
+    if (!match) {
+      return;
+    }
+
+    setModalState({
+      open: true,
+      graph: match.graph,
+      breadcrumb: match.breadcrumb,
+    });
+  };
+
   useEffect(() => {
-    loadGraphDeep(graphId).then((rootGraph) => {
-      const flat = flattenGraphWithSubgraphs(rootGraph, showSubgraphs);
-      const dagre = applyDagreLayout(flat.nodes, flat.edges, orientation);
+    let isActive = true;
 
-      const ns = dagre.nodes.map((n) => ({
-        ...n,
-        id: String(n.id),
-        type: n.type === "subgraph" ? "subgraph" : undefined,
-        data: {
-          ...n.data,
-          stateId: n.data?.label,
-        },
-        style: {
-          border: "1px solid #999",
-          background: "#fff",
-          transition: "all 0.2s ease",
-        },
-      }));
+    loadGraphDeep(graphId)
+      .then((rootGraph) => {
+        if (!isActive) {
+          return;
+        }
 
-      const es = dagre.edges.map((e) => {
-        const from = ns.find((n) => n.id === String(e.source))?.data.stateId;
-        const to = ns.find((n) => n.id === String(e.target))?.data.stateId;
-
-        return {
-          id: String(e.id),
-          source: String(e.source),
-          target: String(e.target),
-          type: "default",
-          data: {
-            fromState: from,
-            toState: to,
-            active: false,
+        rootGraphRef.current = rootGraph;
+        prevStateRef.current = null;
+        setModalState({ open: false, graph: null, breadcrumb: [] });
+        onGraphMeta?.({
+          isLoaded: true,
+          name: rootGraph.name || "",
+          executionInputSchema: rootGraph.execution_input_schema || {
+            fields: [],
+            prefilled_count: 0,
           },
-        };
+          executionInputError: rootGraph.execution_input_error || "",
+        });
+
+        const nextState = buildFlowState(
+          rootGraph,
+          orientation,
+          showSubgraphs,
+          handleOpenSubgraph
+        );
+        setNodes(nextState.nodes);
+        setEdges(nextState.edges);
+      })
+      .catch((error) => {
+        console.error("Failed to load graph", error);
       });
 
-      setNodes(ns);
-      setEdges(es);
-      prevStateRef.current = null;
-    });
+    return () => {
+      isActive = false;
+    };
   }, [graphId, orientation, showSubgraphs]);
 
-  /* ───────────── SSE → HIGHLIGHT ───────────── */
   useEffect(() => {
-    if (!executionEvent) return;
+    if (!executionEvent || !executionEvent.event) {
+      return;
+    }
 
     const { event, state, timestamp } = executionEvent;
-    console.log("[HISTORY]", {
-      event,
-      state
-    });
-    // 🧾 история — стабильно
-    //onHistoryAdd?.(
-    //  `[${new Date(timestamp * 1000).toLocaleTimeString()}] ${event}: ${state}`
-    //);
-    //onHistoryAdd?.({ type: state, event, timestamp: executionEvent.timestamp, });
-    onHistoryAdd?.({
-      title: state,          // ← будет жирным
-      payload: executionEvent.data ?? {},
-      event,
-      timestamp,
-    });
+    if (state) {
+      onHistoryAdd?.({
+        title: state,
+        payload: executionEvent.data ?? {},
+        event,
+        timestamp,
+      });
+    }
 
-    if (event !== "state_enter") return;
+    if (event !== "state_enter") {
+      return;
+    }
 
-    // 🟢 узлы
-    setNodes((nds) =>
-      nds.map((n) =>
-        n.data.stateId === state
-          ? {
-              ...n,
-              style: {
-                ...n.style,
-                border: "3px solid #22c55e",
-                background: "#dcfce7",
-              },
-            }
-          : {
-              ...n,
-              style: {
-                ...n.style,
-                border: "1px solid #999",
-                background: "#fff",
-              },
-            }
-      )
+    setNodes((currentNodes) =>
+      currentNodes.map((node) => {
+        const baseStyle = node.data?.baseStyle || {};
+        if (node.data?.stateId === state) {
+          return {
+            ...node,
+            style: {
+              ...baseStyle,
+              border: "3px solid #22c55e",
+              background: "#dcfce7",
+            },
+          };
+        }
+
+        return {
+          ...node,
+          style: { ...baseStyle },
+        };
+      })
     );
 
-    // 🟠 рёбра
-    const prev = prevStateRef.current;
-
-    setEdges((eds) =>
-      eds.map((e) => ({
-        ...e,
+    const previousState = prevStateRef.current;
+    setEdges((currentEdges) =>
+      currentEdges.map((edge) => ({
+        ...edge,
         data: {
-          ...e.data,
+          ...edge.data,
           active:
-            prev &&
-            e.data.fromState === prev &&
-            e.data.toState === state,
+            Boolean(previousState) &&
+            edge.data?.fromState === previousState &&
+            edge.data?.toState === state,
         },
       }))
     );
@@ -137,25 +226,46 @@ export default function GraphView({
     prevStateRef.current = state;
   }, [executionEvent]);
 
-  /* ───────────────────────────────────────────── */
-
   return (
-    <div style={{ width: "100%", height: "100%" }}>
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        minHeight: 0,
+      }}
+    >
       {children}
+      {executionControls}
 
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={NODE_TYPES}
-        edgeTypes={EDGE_TYPES}
-        fitView
-      >
-        <MiniMap />
-        <Controls />
-        <Background />
-      </ReactFlow>
+      <div style={{ width: "100%", flex: 1, minHeight: 420 }}>
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          nodeTypes={NODE_TYPES}
+          edgeTypes={EDGE_TYPES}
+          fitView
+          nodesDraggable
+          nodesConnectable={false}
+          elementsSelectable
+          panOnDrag
+        >
+          <MiniMap />
+          <Controls />
+          <Background />
+        </ReactFlow>
+      </div>
 
-      <SubgraphModal />
+      <SubgraphModal
+        open={modalState.open}
+        graph={modalState.graph}
+        breadcrumb={modalState.breadcrumb}
+        onClose={() => setModalState({ open: false, graph: null, breadcrumb: [] })}
+        onOpenSubgraph={handleOpenSubgraph}
+      />
     </div>
   );
 }

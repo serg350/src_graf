@@ -23,13 +23,30 @@ from django.views.decorators.http import require_http_methods, require_POST
 from config import settings
 from config.tasks import execute_graph_task
 from comsdk.parser import Parser
-from .aini.aini_parser import parse_aini
+from .aini.aini_parser import build_initial_data, parse_aini
 from .events import get_event_service
 from .forms import DotImportForm
 from .models import Edge, Graph, State, Transfer
 
 execution_status = {}
 # -------------------------------------------------------------------
+def _empty_execution_input_schema() -> Dict[str, Any]:
+    return {
+        "fields": [],
+        "prefilled_count": 0,
+    }
+
+
+def _get_execution_input_context(raw_aini: str | None) -> tuple[Dict[str, Any], str]:
+    if not raw_aini:
+        return _empty_execution_input_schema(), ""
+
+    try:
+        return _build_execution_input_schema(raw_aini), ""
+    except ValueError as exc:
+        return _empty_execution_input_schema(), str(exc)
+
+
 def serialize_graph_recursive(graph):
     """
     Сериализует граф и, для каждой ноды, добавляет поле 'subgraph' если есть.
@@ -66,11 +83,15 @@ def serialize_graph_recursive(graph):
             "label": (t.edge.comment if hasattr(t, "edge") and t.edge else "") or ""
         })
 
+    execution_input_schema, execution_input_error = _get_execution_input_context(graph.raw_aini)
+
     return {
         "id": graph.id,
         "name": graph.name,
         "nodes": nodes,
         "edges": edges,
+        "execution_input_schema": execution_input_schema,
+        "execution_input_error": execution_input_error,
     }
 
 
@@ -86,6 +107,7 @@ def graph_deep_json(request, graph_id):
 #@staff_member_required
 def graph_json(request, graph_id):
     graph = get_object_or_404(Graph, pk=graph_id)
+    execution_input_schema, execution_input_error = _get_execution_input_context(graph.raw_aini)
 
     # Узлы
     nodes = []
@@ -115,7 +137,9 @@ def graph_json(request, graph_id):
         "id": graph.id,
         "name": graph.name,
         "nodes": nodes,
-        "edges": edges
+        "edges": edges,
+        "execution_input_schema": execution_input_schema,
+        "execution_input_error": execution_input_error,
     })
 
 def graphs_list_json(request):
@@ -149,14 +173,7 @@ def graphs_list_json(request):
 def graph_interactive_view(request, graph_id):
     graph = get_object_or_404(Graph, pk=graph_id)
     session_id = request.GET.get('session')
-    execution_input_schema = {"fields": []}
-    execution_input_error = ""
-
-    if graph.raw_aini:
-        try:
-            execution_input_schema = _build_execution_input_schema(graph.raw_aini)
-        except ValueError as exc:
-            execution_input_error = str(exc)
+    execution_input_schema, execution_input_error = _get_execution_input_context(graph.raw_aini)
 
     dot = graphviz.Digraph()
     dot.attr('node', shape='box')
@@ -533,8 +550,45 @@ def _extract_sample_from_aini_parameter(parameter: Dict[str, Any]) -> Any:
     return value
 
 
+def _has_execution_initial_value(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return value != ""
+    if isinstance(value, (list, tuple, dict, set)):
+        return len(value) > 0
+    return True
+
+
+def _serialize_execution_input_value(value: Any, input_type: str) -> Any:
+    if value is None:
+        return None
+    if input_type == "checkbox":
+        return bool(value)
+    if isinstance(value, (list, tuple, dict)):
+        return json.dumps(value, ensure_ascii=False)
+    return value
+
+
+def _format_execution_input_value(value: Any, parameter: Dict[str, Any]) -> str:
+    if value is None:
+        return ""
+
+    if isinstance(value, (list, tuple, dict)):
+        rendered = json.dumps(value, ensure_ascii=False)
+    else:
+        rendered = str(value)
+
+    if parameter.get("value_type") == "dim" and isinstance(parameter.get("value"), dict):
+        unit = parameter["value"].get("unit", "")
+        if unit:
+            return f"{rendered} [{unit}]"
+    return rendered
+
+
 def _build_execution_input_schema(raw_aini: str) -> Dict[str, Any]:
     parsed = parse_aini(raw_aini)
+    initial_data = build_initial_data(raw_aini)
     fields = []
 
     for parameter in parsed["parameters"]:
@@ -547,6 +601,7 @@ def _build_execution_input_schema(raw_aini: str) -> Dict[str, Any]:
         elif isinstance(sample, (int, float)) and not isinstance(sample, bool):
             input_type = "number"
 
+        initial_value = initial_data.get(parameter["name"])
         field = {
             "name": parameter["name"],
             "label": parameter["name"].split("$")[-1],
@@ -557,16 +612,31 @@ def _build_execution_input_schema(raw_aini: str) -> Dict[str, Any]:
             "value_type": parameter.get("value_type", "text"),
             "input_type": input_type,
             "sample": sample,
+            "initial_value": _serialize_execution_input_value(initial_value, input_type),
+            "initial_value_label": _format_execution_input_value(initial_value, parameter),
+            "has_initial_value": _has_execution_initial_value(initial_value),
+            "min": None,
+            "max": None,
+            "step": 1 if isinstance(sample, int) and not isinstance(sample, bool) else None,
             "options": [],
         }
 
         if parameter.get("value_type") == "combobox":
             raw_options = parameter.get("value", {}).get("options", [])
             field["options"] = [str(option) for option in raw_options]
+        elif parameter.get("value_type") == "interval" and isinstance(parameter.get("value"), dict):
+            field["min"] = parameter["value"].get("min")
+            field["max"] = parameter["value"].get("max")
+            field["step"] = parameter["value"].get("step")
+        elif input_type == "number" and field["step"] is None:
+            field["step"] = "any"
 
         fields.append(field)
 
-    return {"fields": fields}
+    return {
+        "fields": fields,
+        "prefilled_count": sum(1 for field in fields if field["has_initial_value"]),
+    }
 
 
 def _coerce_bool(value: Any, field_name: str) -> bool:
