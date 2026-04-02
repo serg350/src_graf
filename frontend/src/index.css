@@ -187,3 +187,29 @@ a {
     transform: rotate(360deg);
   }
 }
+
+.gv-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: #375f84;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.gv-empty-card,
+.gv-error-card {
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid #d7e1ec;
+  background: #f8fbfd;
+  color: #5f7184;
+}
+
+.gv-error-card {
+  border-color: #ef9a9a;
+  background: #fff1f1;
+  color: #b42318;
+}

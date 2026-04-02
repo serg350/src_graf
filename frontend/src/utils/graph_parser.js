@@ -3,7 +3,8 @@ export function flattenGraphWithSubgraphs(graph, showSubgraphs) {
   const outEdges = [];
 
   graph.nodes.forEach((n) => {
-    const isSub = n.subgraph !== null && n.subgraph !== undefined;
+    const isSub =
+      showSubgraphs && n.subgraph !== null && n.subgraph !== undefined;
 
     if (isSub) {
       outNodes.push({

@@ -4,8 +4,9 @@ from unittest.mock import patch
 from django.test import RequestFactory, TestCase
 
 from .aini.aini_parser import build_initial_data, parse_aini
-from .models import Graph
-from .views import _build_execution_input_schema, start_execution
+from .execution_history import record_execution_event
+from .models import Graph, GraphExecutionSession
+from .views import _build_execution_input_schema, graph_execution_history_json, start_execution
 
 
 RAW_AINI = """
@@ -104,3 +105,85 @@ class StartExecutionAINITests(TestCase):
         self.assertEqual(payload["Pressure"], 55)
         self.assertNotIn("OutputFilename", payload)
         self.assertNotIn("a", payload)
+
+        session = GraphExecutionSession.objects.get(session_id=delay_mock.call_args.args[1])
+        self.assertEqual(session.graph, graph)
+        self.assertEqual(session.status, GraphExecutionSession.STATUS_PENDING)
+        self.assertEqual(session.initial_data, payload)
+
+
+class ExecutionHistoryTests(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.graph = Graph.objects.create(
+            name="history_graph",
+            raw_dot="digraph Test { __BEGIN__ -> __END__ }",
+        )
+
+    def test_record_execution_event_updates_session_status_and_events(self):
+        session = GraphExecutionSession.objects.create(
+            graph=self.graph,
+            session_id="session-history-1",
+            initial_data={"Pressure": 55},
+        )
+
+        record_execution_event(
+            session.session_id,
+            {
+                "event": "state_enter",
+                "state": "Prepare",
+                "timestamp": 1710000000,
+                "data": {"Pressure": 55},
+                "session_id": session.session_id,
+            },
+        )
+        record_execution_event(
+            session.session_id,
+            {
+                "event": "complete",
+                "state": None,
+                "timestamp": 1710000005,
+                "data": {},
+                "session_id": session.session_id,
+            },
+        )
+
+        session.refresh_from_db()
+        self.assertEqual(session.status, GraphExecutionSession.STATUS_COMPLETED)
+        self.assertEqual(session.event_count, 2)
+        self.assertEqual(session.last_state, "Prepare")
+        self.assertIsNotNone(session.finished_at)
+
+        events = list(session.events.all())
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0].event_type, "state_enter")
+        self.assertEqual(events[1].event_type, "complete")
+
+    def test_graph_execution_history_json_returns_saved_sessions(self):
+        session = GraphExecutionSession.objects.create(
+            graph=self.graph,
+            session_id="session-history-2",
+            initial_data={"TaskName": "Demo"},
+        )
+        record_execution_event(
+            session.session_id,
+            {
+                "event": "error",
+                "state": "BrokenState",
+                "timestamp": 1710000010,
+                "message": "boom",
+                "data": {"TaskName": "Demo"},
+                "session_id": session.session_id,
+            },
+        )
+
+        request = self.factory.get(f"/api/graphs/{self.graph.id}/executions/")
+        response = graph_execution_history_json(request, self.graph.id)
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content)
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0]["session_id"], session.session_id)
+        self.assertEqual(payload[0]["status"], GraphExecutionSession.STATUS_FAILED)
+        self.assertEqual(payload[0]["error_message"], "boom")
+        self.assertEqual(payload[0]["events"][0]["event"], "error")

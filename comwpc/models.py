@@ -1,5 +1,6 @@
 from django.db import models
 
+
 class Graph(models.Model):
     name = models.CharField(max_length=255)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -51,3 +52,68 @@ class Transfer(models.Model):
 
     class Meta:
         ordering = ['order']
+
+
+class GraphExecutionSession(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_RUNNING = "running"
+    STATUS_COMPLETED = "completed"
+    STATUS_FAILED = "failed"
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_RUNNING, "Running"),
+        (STATUS_COMPLETED, "Completed"),
+        (STATUS_FAILED, "Failed"),
+    ]
+
+    graph = models.ForeignKey(
+        Graph,
+        on_delete=models.CASCADE,
+        related_name="execution_sessions",
+    )
+    session_id = models.CharField(max_length=64, unique=True)
+    status = models.CharField(
+        max_length=16,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+    )
+    initial_data = models.JSONField(blank=True, default=dict)
+    last_state = models.CharField(max_length=255, blank=True, default="")
+    error_message = models.TextField(blank=True, default="")
+    event_count = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.graph.name} [{self.session_id}]"
+
+
+class GraphExecutionEvent(models.Model):
+    session = models.ForeignKey(
+        GraphExecutionSession,
+        on_delete=models.CASCADE,
+        related_name="events",
+    )
+    sequence = models.PositiveIntegerField()
+    event_type = models.CharField(max_length=64)
+    state = models.CharField(max_length=255, blank=True, default="")
+    message = models.TextField(blank=True, default="")
+    payload = models.JSONField(blank=True, default=dict)
+    raw_event = models.JSONField(blank=True, default=dict)
+    occurred_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["sequence"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["session", "sequence"],
+                name="unique_execution_event_sequence",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.session.session_id}:{self.sequence}:{self.event_type}"
