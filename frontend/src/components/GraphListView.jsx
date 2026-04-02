@@ -1,58 +1,121 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+
 import { loadAllGraphs } from "../services/api";
+
+function formatDateTime(value) {
+  if (!value) {
+    return "—";
+  }
+
+  return new Date(value).toLocaleString("ru-RU");
+}
 
 export default function GraphListView({ onSelect }) {
   const [graphs, setGraphs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    loadAllGraphs().then((data) => {
-      setGraphs(data);
-      setLoading(false);
-    });
+    let isActive = true;
+
+    loadAllGraphs()
+      .then((data) => {
+        if (!isActive) {
+          return;
+        }
+
+        setGraphs(data);
+      })
+      .catch((nextError) => {
+        if (!isActive) {
+          return;
+        }
+
+        setError(nextError.message || "Не удалось загрузить графы");
+      })
+      .finally(() => {
+        if (isActive) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
   }, []);
 
-  if (loading) {
-    return <div style={{ padding: 20 }}>Загрузка графов...</div>;
-  }
-
   return (
-    <div
-      style={{
-        padding: 20,
-        height: "100%",        // ← важно
-        boxSizing: "border-box",
-      }}
-    >
-      <h3 style={{ marginBottom: 12 }}>Все графы</h3>
-
-      <div style={{ display: "grid", gap: 10 }}>
-        {graphs.map((g) => (
-          <div
-            key={g.id}
-            onClick={() => onSelect(g.id)}
-            style={{
-              padding: "12px 14px",
-              borderRadius: 10,
-              border: "1px solid #e5e7eb",
-              cursor: "pointer",
-              background: "#fff",
-              transition: "all 0.15s",
-            }}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.background = "#f8fafc")
-            }
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.background = "#fff")
-            }
-          >
-            <div style={{ fontWeight: 600 }}>{g.name}</div>
-            <div style={{ fontSize: 12, color: "#64748b" }}>
-              nodes: {g.nodes_count ?? "—"} | edges: {g.edges_count ?? "—"}
-            </div>
-          </div>
-        ))}
+    <div style={{ padding: 20, display: "grid", gap: 16 }}>
+      <div
+        style={{
+          display: "grid",
+          gap: 6,
+          padding: 20,
+          borderRadius: 18,
+          background: "linear-gradient(180deg, #fbfdff 0%, #f3f8fc 100%)",
+          border: "1px solid #d7e1ec",
+        }}
+      >
+        <div style={{ fontSize: 24, fontWeight: 800, color: "#274c6a" }}>Все графы</div>
+        <div style={{ fontSize: 14, color: "#5f7184" }}>
+          Каталог импортированных графов и накопленная история запусков.
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
+          <span className="gv-chip">Всего: {loading ? "…" : graphs.length}</span>
+        </div>
       </div>
+
+      {loading ? (
+        <div className="gv-empty-card">Загрузка графов...</div>
+      ) : null}
+
+      {error ? <div className="gv-error-card">{error}</div> : null}
+
+      {!loading && !error ? (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+            gap: 14,
+          }}
+        >
+          {graphs.map((graph) => (
+            <button
+              key={graph.id}
+              type="button"
+              onClick={() => onSelect(graph.id)}
+              style={{
+                border: "1px solid #d7e1ec",
+                borderRadius: 18,
+                background: "#ffffff",
+                padding: 18,
+                textAlign: "left",
+                display: "grid",
+                gap: 12,
+                boxShadow: "0 10px 24px rgba(15, 23, 42, 0.05)",
+              }}
+            >
+              <div style={{ display: "grid", gap: 6 }}>
+                <div style={{ fontSize: 17, fontWeight: 700, color: "#1f2937" }}>
+                  {graph.name}
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  <span className="gv-chip">
+                    {graph.is_subgraph ? "Подграф" : "Основной граф"}
+                  </span>
+                  <span className="gv-chip">Узлов: {graph.nodes_count ?? "—"}</span>
+                  <span className="gv-chip">Переходов: {graph.edges_count ?? "—"}</span>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gap: 4, fontSize: 13, color: "#5f7184" }}>
+                <div>Запусков: {graph.execution_count ?? 0}</div>
+                <div>Последний запуск: {formatDateTime(graph.last_execution_at)}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

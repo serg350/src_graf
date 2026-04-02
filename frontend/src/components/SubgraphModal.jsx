@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import { createPortal } from "react-dom";
 import ReactFlow, {
   Background,
   Controls,
@@ -78,7 +79,7 @@ export default function SubgraphModal({
     return null;
   }
 
-  return (
+  const content = (
     <div
       style={{
         position: "fixed",
@@ -161,4 +162,6 @@ export default function SubgraphModal({
       </div>
     </div>
   );
+
+  return createPortal(content, document.body);
 }

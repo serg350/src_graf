@@ -12,13 +12,6 @@ export default function CustomEdge(props) {
     data,
   } = props;
 
-  console.log("[EDGE RENDER]", {
-    id,
-    from: data?.fromState,
-    to: data?.toState,
-    active: data?.active,
-  });
-
   const [path] = getBezierPath({
     sourceX,
     sourceY,

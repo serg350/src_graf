@@ -77,6 +77,7 @@ export default function ExecutionController({
   graphName,
   executionInputSchema,
   executionInputError,
+  onSessionStarted,
   onStateEvent,
 }) {
   const [isStarting, setIsStarting] = useState(false);
@@ -111,6 +112,10 @@ export default function ExecutionController({
 
     try {
       const { session_id } = await startExecution(graphId, payload);
+      onSessionStarted?.({
+        sessionId: session_id,
+        initialData: payload,
+      });
       disconnectRef.current = connectExecution(session_id, (event) => {
         onStateEvent(event);
       });

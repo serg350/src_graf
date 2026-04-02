@@ -12,7 +12,7 @@ from typing import Any, Dict
 import graphviz
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
-from django.db.models import Count
+from django.db.models import Count, Max
 from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
@@ -23,77 +23,22 @@ from django.views.decorators.http import require_http_methods, require_POST
 from config import settings
 from config.tasks import execute_graph_task
 from comsdk.parser import Parser
-from .aini.aini_parser import build_initial_data, parse_aini
+from .aini.aini_parser import parse_aini
+from .execution_history import (
+    create_execution_session,
+    list_graph_execution_sessions,
+    serialize_execution_sessions,
+)
+from .execution_inputs import (
+    build_execution_input_context as _get_execution_input_context,
+    build_execution_input_schema as _build_execution_input_schema,
+    parse_execution_request_data as _parse_execution_request_data,
+    prepare_execution_initial_data as _prepare_execution_initial_data,
+)
 from .events import get_event_service
 from .forms import DotImportForm
+from .graph_payloads import build_graph_list_payload, build_graph_payload
 from .models import Edge, Graph, State, Transfer
-
-execution_status = {}
-# -------------------------------------------------------------------
-def _empty_execution_input_schema() -> Dict[str, Any]:
-    return {
-        "fields": [],
-        "prefilled_count": 0,
-    }
-
-
-def _get_execution_input_context(raw_aini: str | None) -> tuple[Dict[str, Any], str]:
-    if not raw_aini:
-        return _empty_execution_input_schema(), ""
-
-    try:
-        return _build_execution_input_schema(raw_aini), ""
-    except ValueError as exc:
-        return _empty_execution_input_schema(), str(exc)
-
-
-def serialize_graph_recursive(graph):
-    """
-    Сериализует граф и, для каждой ноды, добавляет поле 'subgraph' если есть.
-    Возвращает dict с keys: id, name, nodes, edges
-    nodes: [{id, label, is_terminal, subgraph_id, subgraph (or None)}]
-    edges: [{id, source, target, label}]
-    """
-    nodes = []
-    for s in graph.state_set.exclude(name__in=["__BEGIN__", "__END__"]):
-        # допустим, у s есть поле subgraph (ForeignKey на Graph) или None
-        subgraph_obj = getattr(s, "subgraph", None)
-        subgraph_data = None
-        if subgraph_obj:
-            # Рекурсивно сериализуем подграф
-            subgraph_data = serialize_graph_recursive(subgraph_obj)
-
-        nodes.append({
-            "id": str(s.id),
-            "label": s.name,
-            "is_terminal": bool(getattr(s, "is_terminal", False)),
-            "subgraph_id": subgraph_obj.id if subgraph_obj else None,
-            "subgraph": subgraph_data,
-        })
-
-    edges = []
-    for t in graph.transfer_set.all():
-        # убираем спец. ноды если нужно
-        if t.source.name in ["__BEGIN__", "__END__"] or t.target.name in ["__BEGIN__", "__END__"]:
-            continue
-        edges.append({
-            "id": f"{t.source.id}-{t.target.id}",
-            "source": str(t.source.id),
-            "target": str(t.target.id),
-            "label": (t.edge.comment if hasattr(t, "edge") and t.edge else "") or ""
-        })
-
-    execution_input_schema, execution_input_error = _get_execution_input_context(graph.raw_aini)
-
-    return {
-        "id": graph.id,
-        "name": graph.name,
-        "nodes": nodes,
-        "edges": edges,
-        "execution_input_schema": execution_input_schema,
-        "execution_input_error": execution_input_error,
-    }
-
 
 def graph_deep_json(request, graph_id):
     """
@@ -101,46 +46,12 @@ def graph_deep_json(request, graph_id):
     GET /api/graphs/<id>/deep/
     """
     graph = get_object_or_404(Graph, pk=graph_id)
-    data = serialize_graph_recursive(graph)
-    return JsonResponse(data, safe=True)
+    return JsonResponse(build_graph_payload(graph, include_subgraphs=True), safe=True)
 
 #@staff_member_required
 def graph_json(request, graph_id):
     graph = get_object_or_404(Graph, pk=graph_id)
-    execution_input_schema, execution_input_error = _get_execution_input_context(graph.raw_aini)
-
-    # Узлы
-    nodes = []
-    for s in graph.state_set.exclude(name__in=["__BEGIN__", "__END__"]):
-        nodes.append({
-            "id": str(s.id),
-            "label": s.name,
-            "is_terminal": s.is_terminal,
-            "subgraph": s.subgraph.id if s.subgraph else None,
-        })
-
-    # Рёбра
-    edges = []
-    for t in graph.transfer_set.all():
-        if t.source.name in ["__BEGIN__", "__END__"]:
-            continue
-        if t.target.name in ["__BEGIN__", "__END__"]:
-            continue
-        edges.append({
-            "id": f"{t.source.id}-{t.target.id}",
-            "source": str(t.source.id),
-            "target": str(t.target.id),
-            "label": t.edge.comment if t.edge else "",
-        })
-
-    return JsonResponse({
-        "id": graph.id,
-        "name": graph.name,
-        "nodes": nodes,
-        "edges": edges,
-        "execution_input_schema": execution_input_schema,
-        "execution_input_error": execution_input_error,
-    })
+    return JsonResponse(build_graph_payload(graph), safe=True)
 
 def graphs_list_json(request):
     """
@@ -152,22 +63,28 @@ def graphs_list_json(request):
         Graph.objects
         .annotate(
             nodes_count=Count("state", distinct=True),
-            edges_count=Count("transfer", distinct=True)
+            edges_count=Count("transfer", distinct=True),
+            execution_count=Count("execution_sessions", distinct=True),
+            last_execution_at=Max("execution_sessions__created_at"),
         )
         .order_by("name")
     )
 
-    data = []
-    for g in graphs:
-        data.append({
-            "id": g.id,
-            "name": g.name,
-            "nodes_count": g.nodes_count,
-            "edges_count": g.edges_count,
-        })
-
-    return JsonResponse(data, safe=False)
+    return JsonResponse(build_graph_list_payload(graphs), safe=False)
 # -------------------------------------------------------------------
+
+
+def graph_execution_history_json(request, graph_id):
+    graph = get_object_or_404(Graph, pk=graph_id)
+
+    try:
+        limit = int(request.GET.get("limit", 12))
+    except (TypeError, ValueError):
+        limit = 12
+
+    limit = max(1, min(limit, 50))
+    sessions = list_graph_execution_sessions(graph, limit=limit)
+    return JsonResponse(serialize_execution_sessions(sessions), safe=False)
 
 @staff_member_required
 def graph_interactive_view(request, graph_id):
@@ -535,218 +452,6 @@ def _read_and_validate_aini(request):
         parse_aini(raw_aini)
 
     return raw_aini
-
-
-def _extract_sample_from_aini_parameter(parameter: Dict[str, Any]) -> Any:
-    value_type = parameter.get("value_type")
-    value = parameter.get("value")
-
-    if value_type == "dim" and isinstance(value, dict):
-        return value.get("value")
-    if value_type == "interval" and isinstance(value, dict):
-        return value.get("current")
-    if value_type == "combobox" and isinstance(value, dict):
-        return value.get("current")
-    return value
-
-
-def _has_execution_initial_value(value: Any) -> bool:
-    if value is None:
-        return False
-    if isinstance(value, str):
-        return value != ""
-    if isinstance(value, (list, tuple, dict, set)):
-        return len(value) > 0
-    return True
-
-
-def _serialize_execution_input_value(value: Any, input_type: str) -> Any:
-    if value is None:
-        return None
-    if input_type == "checkbox":
-        return bool(value)
-    if isinstance(value, (list, tuple, dict)):
-        return json.dumps(value, ensure_ascii=False)
-    return value
-
-
-def _format_execution_input_value(value: Any, parameter: Dict[str, Any]) -> str:
-    if value is None:
-        return ""
-
-    if isinstance(value, (list, tuple, dict)):
-        rendered = json.dumps(value, ensure_ascii=False)
-    else:
-        rendered = str(value)
-
-    if parameter.get("value_type") == "dim" and isinstance(parameter.get("value"), dict):
-        unit = parameter["value"].get("unit", "")
-        if unit:
-            return f"{rendered} [{unit}]"
-    return rendered
-
-
-def _build_execution_input_schema(raw_aini: str) -> Dict[str, Any]:
-    parsed = parse_aini(raw_aini)
-    initial_data = build_initial_data(raw_aini)
-    fields = []
-
-    for parameter in parsed["parameters"]:
-        sample = _extract_sample_from_aini_parameter(parameter)
-        input_type = "text"
-        if parameter.get("value_type") == "bool" or isinstance(sample, bool):
-            input_type = "checkbox"
-        elif parameter.get("value_type") == "combobox":
-            input_type = "select"
-        elif isinstance(sample, (int, float)) and not isinstance(sample, bool):
-            input_type = "number"
-
-        initial_value = initial_data.get(parameter["name"])
-        field = {
-            "name": parameter["name"],
-            "label": parameter["name"].split("$")[-1],
-            "section": parameter.get("section", "Input"),
-            "required": bool(parameter.get("required")),
-            "optional": bool(parameter.get("optional")),
-            "comment": parameter.get("comment", ""),
-            "value_type": parameter.get("value_type", "text"),
-            "input_type": input_type,
-            "sample": sample,
-            "initial_value": _serialize_execution_input_value(initial_value, input_type),
-            "initial_value_label": _format_execution_input_value(initial_value, parameter),
-            "has_initial_value": _has_execution_initial_value(initial_value),
-            "min": None,
-            "max": None,
-            "step": 1 if isinstance(sample, int) and not isinstance(sample, bool) else None,
-            "options": [],
-        }
-
-        if parameter.get("value_type") == "combobox":
-            raw_options = parameter.get("value", {}).get("options", [])
-            field["options"] = [str(option) for option in raw_options]
-        elif parameter.get("value_type") == "interval" and isinstance(parameter.get("value"), dict):
-            field["min"] = parameter["value"].get("min")
-            field["max"] = parameter["value"].get("max")
-            field["step"] = parameter["value"].get("step")
-        elif input_type == "number" and field["step"] is None:
-            field["step"] = "any"
-
-        fields.append(field)
-
-    return {
-        "fields": fields,
-        "prefilled_count": sum(1 for field in fields if field["has_initial_value"]),
-    }
-
-
-def _coerce_bool(value: Any, field_name: str) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        return bool(value)
-
-    text = str(value).strip().lower()
-    if text in {"1", "true", "yes", "on"}:
-        return True
-    if text in {"0", "false", "no", "off"}:
-        return False
-
-    raise ValueError(f"Invalid boolean value for field '{field_name}'")
-
-
-def _coerce_execution_value(raw_value: Any, parameter: Dict[str, Any]) -> Any:
-    field_name = parameter["name"]
-    sample = _extract_sample_from_aini_parameter(parameter)
-    value_type = parameter.get("value_type")
-
-    if value_type == "bool":
-        return _coerce_bool(raw_value, field_name)
-
-    if value_type == "combobox":
-        options = [str(option) for option in parameter.get("value", {}).get("options", [])]
-        as_text = str(raw_value)
-        if options and as_text not in options:
-            raise ValueError(f"Value '{as_text}' is not allowed for field '{field_name}'")
-        raw_value = as_text
-
-    if isinstance(sample, bool):
-        return _coerce_bool(raw_value, field_name)
-
-    if isinstance(sample, int) and not isinstance(sample, bool):
-        try:
-            return int(raw_value)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"Invalid integer value for field '{field_name}'") from exc
-
-    if isinstance(sample, float):
-        try:
-            return float(raw_value)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"Invalid numeric value for field '{field_name}'") from exc
-
-    return raw_value
-
-
-def _parse_execution_request_data(request) -> Dict[str, Any]:
-    payload: Any = {}
-
-    if request.content_type and "application/json" in request.content_type:
-        raw_body = request.body.decode("utf-8") if request.body else "{}"
-        try:
-            payload = json.loads(raw_body or "{}")
-        except json.JSONDecodeError as exc:
-            raise ValueError("Field data must contain valid JSON") from exc
-    elif "data" in request.POST:
-        raw_data = request.POST.get("data", "{}") or "{}"
-        try:
-            payload = {"data": json.loads(raw_data)}
-        except json.JSONDecodeError as exc:
-            raise ValueError("Field data must contain valid JSON") from exc
-    else:
-        payload = request.POST.dict()
-
-    if not isinstance(payload, dict):
-        raise ValueError("Field data must be a JSON object")
-
-    request_data: Any = payload.get("data", payload)
-    if isinstance(request_data, str):
-        try:
-            request_data = json.loads(request_data or "{}")
-        except json.JSONDecodeError as exc:
-            raise ValueError("Field data must contain valid JSON") from exc
-
-    if not isinstance(request_data, dict):
-        raise ValueError("Field data must be a JSON object")
-
-    return request_data
-
-
-def _prepare_execution_initial_data(graph: Graph, request_data: Dict[str, Any]) -> Dict[str, Any]:
-    if not graph.raw_aini:
-        return dict(request_data)
-
-    parsed = parse_aini(graph.raw_aini)
-    parameters = {parameter["name"]: parameter for parameter in parsed["parameters"]}
-
-    result: Dict[str, Any] = {}
-    missing_required = []
-
-    for field_name, parameter in parameters.items():
-        if field_name not in request_data or request_data[field_name] in ("", None):
-            if parameter.get("required"):
-                missing_required.append(field_name)
-            continue
-
-        result[field_name] = _coerce_execution_value(request_data[field_name], parameter)
-
-    if missing_required:
-        raise ValueError(f"Missing required aINI fields: {', '.join(missing_required)}")
-
-    for key, value in request_data.items():
-        if key not in result and key not in parameters:
-            result[key] = value
-
-    return result
 
 
 def _collect_graph_stats(django_graph):
@@ -1192,6 +897,7 @@ def start_execution(request, graph_id):
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=400)
 
+    create_execution_session(graph, session_id=session_id, initial_data=initial_data)
     execute_graph_task.delay(
         graph.raw_dot,
         session_id,

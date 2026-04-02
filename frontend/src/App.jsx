@@ -1,6 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
-import GraphImportPage from "./components/ImportGraphView";
+import GraphImportPage from "./components/GraphImportPage";
 import GraphListPage from "./components/GraphListPage";
 import GraphViewerPage from "./components/GraphViewerPage";
 

@@ -1,32 +1,14 @@
-import React from "react";
+import { useNavigate } from "react-router-dom";
+
 import GraphListView from "../components/GraphListView";
+import GraphVisLabLayout from "../components/GraphVisLabLayout";
 
 export default function GraphListPage() {
-  return (
-    <div
-      style={{
-        height: "100vh",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <div style={{ padding: 24 }}>
-        <h2 style={{ margin: 0 }}>Все графы</h2>
-      </div>
+  const navigate = useNavigate();
 
-      {/* SCROLL AREA */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: "auto",
-        }}
-      >
-        <GraphListView
-          onSelect={(id) => {
-            window.location.href = `/graphs/${id}`;
-          }}
-        />
-      </div>
-    </div>
+  return (
+    <GraphVisLabLayout>
+      <GraphListView onSelect={(id) => navigate(`/graphs/${id}`)} />
+    </GraphVisLabLayout>
   );
 }

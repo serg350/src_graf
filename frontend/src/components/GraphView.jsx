@@ -101,7 +101,6 @@ export default function GraphView({
   showSubgraphs = true,
   executionEvent,
   executionControls,
-  onHistoryAdd,
   onGraphMeta,
   children,
 }) {
@@ -174,15 +173,7 @@ export default function GraphView({
       return;
     }
 
-    const { event, state, timestamp } = executionEvent;
-    if (state) {
-      onHistoryAdd?.({
-        title: state,
-        payload: executionEvent.data ?? {},
-        event,
-        timestamp,
-      });
-    }
+    const { event, state } = executionEvent;
 
     if (event !== "state_enter") {
       return;

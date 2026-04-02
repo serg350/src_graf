@@ -7,8 +7,8 @@ export default function SubgraphNode({ data }) {
     <div
       style={{
         padding: "10px 14px",
-        background: "#eef2ff",
-        border: "2px solid #6366f1",
+        background: "#fff4e5",
+        border: "2px solid #d97706",
         borderRadius: 10,
         fontSize: 13,
         fontWeight: 600,
@@ -23,7 +23,7 @@ export default function SubgraphNode({ data }) {
         data.onOpenSubgraph?.(data.subgraphId);
       }}
     >
-      <FolderTree size={16} color="#4f46e5" />
+      <FolderTree size={16} color="#b45309" />
       <span>{data.label}</span>
 
       {/* обязательные handle'ы */}
@@ -31,14 +31,14 @@ export default function SubgraphNode({ data }) {
         type="target"
         position={Position.Left}
         id="in"
-        style={{ background: "#4f46e5" }}
+        style={{ background: "#d97706" }}
       />
 
       <Handle
         type="source"
         position={Position.Right}
         id="out"
-        style={{ background: "#4f46e5" }}
+        style={{ background: "#d97706" }}
       />
     </div>
   );

@@ -1,3 +1,6 @@
+import { useEffect } from "react";
+import { createPortal } from "react-dom";
+
 const overlayStyle = {
   position: "fixed",
   inset: 0,
@@ -53,6 +56,19 @@ export default function ExecutionStartModal({
   onSubmit,
   onChange,
 }) {
+  useEffect(() => {
+    if (!open || typeof document === "undefined") {
+      return undefined;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
   if (!open) {
     return null;
   }
@@ -60,7 +76,7 @@ export default function ExecutionStartModal({
   const fields = schema?.fields ?? [];
   const sections = groupFieldsBySection(fields);
 
-  return (
+  const content = (
     <div style={overlayStyle} onClick={onClose}>
       <div style={modalStyle} onClick={(event) => event.stopPropagation()}>
         <div
@@ -319,4 +335,6 @@ export default function ExecutionStartModal({
       </div>
     </div>
   );
+
+  return createPortal(content, document.body);
 }
