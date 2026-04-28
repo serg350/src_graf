@@ -948,4 +948,3 @@ def event_stream(session_id):
     finally:
         # Отписываемся при завершении
         event_service.unsubscribe(session_id, event_handler)
-
