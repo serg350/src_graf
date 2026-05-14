@@ -24,6 +24,13 @@ function normalizeEvent(event, index = 0) {
   };
 }
 
+function getNextEventSequence(events) {
+  return events.reduce(
+    (nextSequence, event) => Math.max(nextSequence, Number(event.sequence) || 0),
+    0
+  ) + 1;
+}
+
 export function normalizeExecutionSession(session) {
   return {
     session_id: session.session_id,
@@ -72,7 +79,6 @@ export function mergeExecutionEvent(sessions, rawEvent) {
     return sessions;
   }
 
-  const event = normalizeEvent(rawEvent);
   let found = false;
 
   const updated = sessions.map((session) => {
@@ -81,9 +87,17 @@ export function mergeExecutionEvent(sessions, rawEvent) {
     }
 
     found = true;
+    const event = normalizeEvent(rawEvent);
+
+    if (rawEvent.sequence === undefined || rawEvent.sequence === null) {
+      event.sequence = getNextEventSequence(session.events);
+    }
+
     const hasSameEvent = session.events.some(
       (item) =>
-        item.sequence === event.sequence &&
+        (rawEvent.sequence === undefined ||
+          rawEvent.sequence === null ||
+          item.sequence === event.sequence) &&
         item.event === event.event &&
         item.state === event.state &&
         item.timestamp === event.timestamp

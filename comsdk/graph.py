@@ -169,12 +169,15 @@ class Graph:
             self._notify_listeners('state_enter', cur_state, data)
  #           print('1) In main loop', implicit_parallelization_info)
 #            morph = _run_state(cur_state, data, implicit_parallelization_info)
-            time.sleep(3)
             transfer_f, implicit_parallelization_info = _run_state(cur_state, data, implicit_parallelization_info)
 #            print('2) In main loop', implicit_parallelization_info)
             if '__EXCEPTION__' in data:
                 return False
 #            cur_state, implicit_parallelization_info = morph(data)
+            if transfer_f is None:
+                raise GraphUnexpectedTermination(
+                    "STATE {}: no transfer function is available".format(cur_state.name)
+                )
             cur_state = transfer_f(data)
             print(cur_state)
 #            print(morph)
@@ -334,6 +337,8 @@ class State:
 
     def _ready_to_transfer(self, implicit_parallelization_info=None):
         required_activated_input_edges_number = self.input_edges_number - self.looped_edges_number
+        if self.is_term_state and implicit_parallelization_info is None:
+            return self.activated_input_edges_number > 0
         if implicit_parallelization_info is not None:
             if self.is_term_state:
                 required_activated_input_edges_number = implicit_parallelization_info.branches_number

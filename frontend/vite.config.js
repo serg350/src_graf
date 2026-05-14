@@ -8,6 +8,12 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     port: 5173,
+    hmr: {
+      protocol: "ws",
+      host: "127.0.0.1",
+      port: 5173,
+      clientPort: 5173,
+    },
     proxy: {
       "/api": {
         target: backendTarget,
@@ -19,6 +25,15 @@ export default defineConfig({
       },
       "/execution": {
         target: backendTarget,
+        changeOrigin: true,
+      },
+      "/graph": {
+        target: backendTarget,
+        changeOrigin: true,
+      },
+      "/ws": {
+        target: backendTarget,
+        ws: true,
         changeOrigin: true,
       },
     },

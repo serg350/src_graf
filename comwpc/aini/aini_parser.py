@@ -15,6 +15,12 @@ _PLACEHOLDER_RE = re.compile(r"@([A-Za-z0-9_]+)@")
 
 
 def parse_aini(raw_aini: str) -> Dict[str, Any]:
+    """
+    Что делает: низкоуровневый парсер aINI, используется импортом графов и схемой параметров запуска.
+    Место: низкоуровневый парсер aINI, используется импортом графов и схемой параметров запуска.
+    Вход: сырой текст aINI.
+    Выход: словарь с секциями и плоским списком параметров; при ошибке формата бросает ValueError.
+    """
     if not raw_aini or not raw_aini.strip():
         raise ValueError("aINI is empty")
 
@@ -64,6 +70,12 @@ def parse_aini(raw_aini: str) -> Dict[str, Any]:
 
 
 def build_initial_data(raw_aini: str) -> Dict[str, Any]:
+    """
+    Что делает: подготовка дефолтных значений запуска по aINI для формы и истории исполнения.
+    Место: подготовка дефолтных значений запуска по aINI для формы и истории исполнения.
+    Вход: сырой текст aINI.
+    Выход: словарь runtime-значений параметров с разрешенными шаблонами вида @Name@.
+    """
     parsed = parse_aini(raw_aini)
     values: Dict[str, Any] = {}
     for section in parsed["sections"]:
@@ -73,6 +85,12 @@ def build_initial_data(raw_aini: str) -> Dict[str, Any]:
 
 
 def _parse_value(raw: str) -> Tuple[str, Any]:
+    """
+    Что делает: внутренняя часть aINI-парсера, распознает тип значения одного параметра.
+    Место: внутренняя часть aINI-парсера, распознает тип значения одного параметра.
+    Вход: строковое значение справа от знака равенства.
+    Выход: пара (тип значения, разобранное Python-значение).
+    """
     if (m := _BOOL_RE.match(raw)):
         return "bool", m.group("value") == "1"
     if (m := _COMBOBOX_RE.match(raw)):
@@ -105,12 +123,24 @@ def _parse_value(raw: str) -> Tuple[str, Any]:
 
 
 def _runtime_value(value_type: str, value: Any) -> Any:
+    """
+    Что делает: адаптер aINI-значений к данным, которые реально передаются в исполнитель графа.
+    Место: адаптер aINI-значений к данным, которые реально передаются в исполнитель графа.
+    Вход: тип параметра и значение из parse_aini.
+    Выход: скалярное runtime-значение или исходная структура для сложных типов.
+    """
     if value_type in {"dim", "interval", "combobox"}:
         return value["current"] if value_type != "dim" else value["value"]
     return value
 
 
 def _parse_scalar(value: str) -> Any:
+    """
+    Что делает: базовая нормализация атомарных значений aINI.
+    Место: базовая нормализация атомарных значений aINI.
+    Вход: строковый токен без внешней структуры массива/набора.
+    Выход: int, float, bool или исходная строка, если числовой/булев тип не распознан.
+    """
     value = value.strip()
     if not value:
         return ""
@@ -134,6 +164,12 @@ def _parse_scalar(value: str) -> Any:
 
 
 def _parse_set(raw: str) -> List[Any]:
+    """
+    Что делает: разбор aINI-наборов в фигурных скобках.
+    Место: разбор aINI-наборов в фигурных скобках.
+    Вход: строка вида {a;b;c}, {a,b,c} или {a|b|c}.
+    Выход: список разобранных скалярных значений.
+    """
     body = raw[1:-1].strip()
     if not body:
         return []
@@ -142,6 +178,12 @@ def _parse_set(raw: str) -> List[Any]:
 
 
 def _parse_array(raw: str) -> List[Any]:
+    """
+    Что делает: разбор aINI-массивов, включая вложенные массивы.
+    Место: разбор aINI-массивов, включая вложенные массивы.
+    Вход: строка массива в круглых скобках.
+    Выход: список скаляров или вложенных списков.
+    """
     body = raw[1:-1].strip()
     if not body:
         return []
@@ -158,6 +200,12 @@ def _parse_array(raw: str) -> List[Any]:
 
 
 def _resolve_templates(values: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Что делает: постобработка начальных данных aINI перед запуском графа.
+    Место: постобработка начальных данных aINI перед запуском графа.
+    Вход: словарь параметров, где строки могут ссылаться на другие параметры через @Name@.
+    Выход: новый словарь с подставленными значениями; исходный словарь не мутируется.
+    """
     resolved = dict(values)
     for _ in range(8):
         changed = False
@@ -173,6 +221,12 @@ def _resolve_templates(values: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _split_inline_comment(line: str) -> Tuple[str, str]:
+    """
+    Что делает: лексический помощник aINI-парсера.
+    Место: лексический помощник aINI-парсера.
+    Вход: одна строка aINI.
+    Выход: пара (содержимое без комментария, комментарий), не разрезая // внутри кавычек и скобок.
+    """
     in_quotes = False
     p_depth = b_depth = c_depth = 0
     for i in range(len(line) - 1):
@@ -198,6 +252,12 @@ def _split_inline_comment(line: str) -> Tuple[str, str]:
 
 
 def _split_top_level(value: str, delimiter: str) -> List[str]:
+    """
+    Что делает: лексический помощник для списковых значений aINI.
+    Место: лексический помощник для списковых значений aINI.
+    Вход: строка и разделитель верхнего уровня.
+    Выход: список частей, разделенных только вне кавычек и вложенных скобок.
+    """
     result: List[str] = []
     current: List[str] = []
     in_quotes = False

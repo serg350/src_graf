@@ -6,6 +6,12 @@ from .models import Graph
 
 
 def empty_execution_input_schema() -> dict[str, Any]:
+    """
+    Что делает: общий fallback для графов без aINI или с ошибкой разбора aINI.
+    Место: общий fallback для графов без aINI или с ошибкой разбора aINI.
+    Вход: нет.
+    Выход: пустая схема формы запуска с нулем предзаполненных полей.
+    """
     return {
         "fields": [],
         "prefilled_count": 0,
@@ -13,6 +19,12 @@ def empty_execution_input_schema() -> dict[str, Any]:
 
 
 def build_execution_input_context(raw_aini: str | None) -> tuple[dict[str, Any], str]:
+    """
+    Что делает: подготовка данных для UI-контролов запуска графа.
+    Место: подготовка данных для UI-контролов запуска графа.
+    Вход: сырой текст aINI или None.
+    Выход: пара (схема полей, текст ошибки); ошибка не пробрасывается наружу.
+    """
     if not raw_aini:
         return empty_execution_input_schema(), ""
 
@@ -23,6 +35,12 @@ def build_execution_input_context(raw_aini: str | None) -> tuple[dict[str, Any],
 
 
 def _extract_sample_from_aini_parameter(parameter: dict[str, Any]) -> Any:
+    """
+    Что делает: внутренняя нормализация параметра aINI для определения типа UI-поля.
+    Место: внутренняя нормализация параметра aINI для определения типа UI-поля.
+    Вход: один параметр из parse_aini.
+    Выход: пример значения, по которому выбирается input/select/checkbox/number.
+    """
     value = parameter.get("value")
     value_type = parameter.get("value_type")
 
@@ -40,6 +58,12 @@ def _extract_sample_from_aini_parameter(parameter: dict[str, Any]) -> Any:
 
 
 def _has_execution_initial_value(value: Any) -> bool:
+    """
+    Что делает: расчет метаданных формы запуска.
+    Место: расчет метаданных формы запуска.
+    Вход: потенциальное начальное значение поля.
+    Выход: True, если значение можно считать осмысленно заданным.
+    """
     if value is None:
         return False
     if isinstance(value, str):
@@ -50,6 +74,12 @@ def _has_execution_initial_value(value: Any) -> bool:
 
 
 def _serialize_execution_input_value(value: Any, input_type: str) -> Any:
+    """
+    Что делает: подготовка initial_value для JSON-ответа фронтенду.
+    Место: подготовка initial_value для JSON-ответа фронтенду.
+    Вход: Python-значение и тип UI-поля.
+    Выход: JSON-совместимое значение; сложные структуры сериализуются строкой.
+    """
     if value is None:
         return None
     if input_type == "checkbox":
@@ -60,6 +90,12 @@ def _serialize_execution_input_value(value: Any, input_type: str) -> Any:
 
 
 def _format_execution_input_value(value: Any, parameter: dict[str, Any]) -> str:
+    """
+    Что делает: человекочитаемая подпись начального значения в интерфейсе.
+    Место: человекочитаемая подпись начального значения в интерфейсе.
+    Вход: значение и исходный параметр aINI.
+    Выход: строка для отображения, включая единицы измерения для dim-параметров.
+    """
     if value is None:
         return ""
 
@@ -76,6 +112,12 @@ def _format_execution_input_value(value: Any, parameter: dict[str, Any]) -> str:
 
 
 def build_execution_input_schema(raw_aini: str) -> dict[str, Any]:
+    """
+    Что делает: построение схемы формы запуска графа из aINI.
+    Место: построение схемы формы запуска графа из aINI.
+    Вход: сырой текст aINI.
+    Выход: словарь со списком полей, типами ввода, ограничениями, опциями и initial values.
+    """
     parsed = parse_aini(raw_aini)
     initial_data = build_initial_data(raw_aini)
     fields = []
@@ -129,6 +171,12 @@ def build_execution_input_schema(raw_aini: str) -> dict[str, Any]:
 
 
 def _coerce_bool(value: Any, field_name: str) -> bool:
+    """
+    Что делает: валидация пользовательского ввода перед отправкой в исполнитель графа.
+    Место: валидация пользовательского ввода перед отправкой в исполнитель графа.
+    Вход: произвольное значение и имя поля для сообщения об ошибке.
+    Выход: bool; при нераспознанном значении бросает ValueError.
+    """
     if isinstance(value, bool):
         return value
     if isinstance(value, (int, float)):
@@ -144,6 +192,12 @@ def _coerce_bool(value: Any, field_name: str) -> bool:
 
 
 def _coerce_execution_value(raw_value: Any, parameter: dict[str, Any]) -> Any:
+    """
+    Что делает: приведение одного пользовательского значения к типу, ожидаемому функциями графа.
+    Место: приведение одного пользовательского значения к типу, ожидаемому функциями графа.
+    Вход: сырое значение из HTTP-запроса и параметр aINI.
+    Выход: типизированное значение; при ошибке типа или недопустимой опции бросает ValueError.
+    """
     field_name = parameter["name"]
     sample = _extract_sample_from_aini_parameter(parameter)
     value_type = parameter.get("value_type")
@@ -177,6 +231,12 @@ def _coerce_execution_value(raw_value: Any, parameter: dict[str, Any]) -> Any:
 
 
 def parse_execution_request_data(request) -> dict[str, Any]:
+    """
+    Что делает: входной адаптер endpoint'а запуска графа.
+    Место: входной адаптер endpoint'а запуска графа.
+    Вход: Django HttpRequest с JSON-body, POST[data] или обычными POST-полями.
+    Выход: словарь пользовательских параметров запуска; при неверном формате бросает ValueError.
+    """
     payload: Any = {}
 
     if request.content_type and "application/json" in request.content_type:
@@ -211,6 +271,12 @@ def parse_execution_request_data(request) -> dict[str, Any]:
 
 
 def prepare_execution_initial_data(graph: Graph, request_data: dict[str, Any]) -> dict[str, Any]:
+    """
+    Что делает: финальная подготовка initial_data для Celery-задачи исполнения.
+    Место: финальная подготовка initial_data для Celery-задачи исполнения.
+    Вход: модель Graph и словарь данных из запроса.
+    Выход: очищенный словарь параметров; проверяет обязательные поля aINI и приводит типы.
+    """
     if not graph.raw_aini:
         return dict(request_data)
 

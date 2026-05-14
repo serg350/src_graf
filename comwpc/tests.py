@@ -24,6 +24,12 @@ GeoFile=[geometry.geo]
 
 class AINIParserTests(TestCase):
     def test_parse_aini_supported_types(self):
+        """
+        Что делает: тестовый слой aINI-парсера.
+        Место: тестовый слой aINI-парсера.
+        Вход: RAW_AINI с разными типами параметров.
+        Выход: проверяет, что parse_aini возвращает ожидаемые value_type и значения.
+        """
         parsed = parse_aini(RAW_AINI)
         self.assertEqual(parsed["sections"][0]["name"], "Input")
         params = {param["name"]: param for param in parsed["parameters"]}
@@ -36,6 +42,12 @@ class AINIParserTests(TestCase):
         self.assertEqual(params["GeoFile"]["value_type"], "file_ref")
 
     def test_build_initial_data_resolves_templates(self):
+        """
+        Что делает: тестовый слой подготовки initial_data из aINI.
+        Место: тестовый слой подготовки initial_data из aINI.
+        Вход: RAW_AINI с шаблонной строкой OutputFilename.
+        Выход: проверяет runtime-значения и разрешение @TaskName@/@Pressure@.
+        """
         data = build_initial_data(RAW_AINI)
         self.assertEqual(data["TaskName"], "ElasticResearch")
         self.assertEqual(data["Pressure"], 34)
@@ -43,6 +55,12 @@ class AINIParserTests(TestCase):
         self.assertTrue(data["CopyObjectToRep"])
 
     def test_build_execution_input_schema_marks_initial_values(self):
+        """
+        Что делает: тестовый слой схемы формы запуска.
+        Место: тестовый слой схемы формы запуска.
+        Вход: RAW_AINI с обязательными, optional и предзаполненными параметрами.
+        Выход: проверяет initial_value, labels и счетчик prefilled_count.
+        """
         schema = _build_execution_input_schema(RAW_AINI)
         fields = {field["name"]: field for field in schema["fields"]}
 
@@ -56,10 +74,22 @@ class AINIParserTests(TestCase):
 
 class StartExecutionAINITests(TestCase):
     def setUp(self):
+        """
+        Что делает: подготовка тестов endpoint'а запуска исполнения.
+        Место: подготовка тестов endpoint'а запуска исполнения.
+        Вход: нет.
+        Выход: создает RequestFactory для ручного вызова Django view.
+        """
         self.factory = RequestFactory()
 
     @patch("comwpc.views.execute_graph_task.delay")
     def test_start_execution_requires_required_aini_fields(self, delay_mock):
+        """
+        Что делает: тест валидации обязательных aINI-полей при запуске графа.
+        Место: тест валидации обязательных aINI-полей при запуске графа.
+        Вход: POST без обязательного TaskName.
+        Выход: проверяет HTTP 400 и отсутствие вызова Celery delay.
+        """
         graph = Graph.objects.create(
             name="test_graph_with_aini",
             raw_dot="digraph Test { __BEGIN__ -> __END__ }",
@@ -78,6 +108,12 @@ class StartExecutionAINITests(TestCase):
 
     @patch("comwpc.views.execute_graph_task.delay")
     def test_start_execution_uses_only_user_provided_aini_values(self, delay_mock):
+        """
+        Что делает: тест подготовки payload для Celery-задачи запуска графа.
+        Место: тест подготовки payload для Celery-задачи запуска графа.
+        Вход: POST с пользовательскими TaskName и Pressure.
+        Выход: проверяет session history, payload без лишних aINI-derived значений и вызов delay.
+        """
         graph = Graph.objects.create(
             name="test_graph_with_aini_values",
             raw_dot="digraph Test { __BEGIN__ -> __END__ }",
@@ -114,6 +150,12 @@ class StartExecutionAINITests(TestCase):
 
 class ExecutionHistoryTests(TestCase):
     def setUp(self):
+        """
+        Что делает: подготовка тестов истории исполнения.
+        Место: подготовка тестов истории исполнения.
+        Вход: нет.
+        Выход: создает RequestFactory и тестовый Graph.
+        """
         self.factory = RequestFactory()
         self.graph = Graph.objects.create(
             name="history_graph",
@@ -121,6 +163,12 @@ class ExecutionHistoryTests(TestCase):
         )
 
     def test_record_execution_event_updates_session_status_and_events(self):
+        """
+        Что делает: тест записи live-событий в историю исполнения.
+        Место: тест записи live-событий в историю исполнения.
+        Вход: pending-сессия и события state_enter/complete.
+        Выход: проверяет status, event_count, last_state, finished_at и порядок событий.
+        """
         session = GraphExecutionSession.objects.create(
             graph=self.graph,
             session_id="session-history-1",
@@ -160,6 +208,12 @@ class ExecutionHistoryTests(TestCase):
         self.assertEqual(events[1].event_type, "complete")
 
     def test_graph_execution_history_json_returns_saved_sessions(self):
+        """
+        Что делает: тест API выдачи истории запусков графа.
+        Место: тест API выдачи истории запусков графа.
+        Вход: сессия с error-событием и GET-запрос истории.
+        Выход: проверяет JSON-ответ, failed status, error_message и сериализацию событий.
+        """
         session = GraphExecutionSession.objects.create(
             graph=self.graph,
             session_id="session-history-2",

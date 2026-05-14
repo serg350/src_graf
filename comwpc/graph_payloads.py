@@ -7,6 +7,12 @@ SERVICE_STATES = ["__BEGIN__", "__END__"]
 
 
 def build_graph_payload(graph, include_subgraphs: bool = False):
+    """
+    Что делает: REST-представление одного графа для ReactFlow-визуализации.
+    Место: REST-представление одного графа для ReactFlow-визуализации.
+    Вход: модель Graph и флаг рекурсивной загрузки подграфов.
+    Выход: JSON-совместимый словарь с nodes, edges, схемой запуска и optional subgraphs.
+    """
     nodes = []
     nested_subgraphs = {}
 
@@ -58,6 +64,12 @@ def build_graph_payload(graph, include_subgraphs: bool = False):
 
 
 def build_graph_list_payload(graphs: QuerySet):
+    """
+    Что делает: REST-представление списка графов на стартовой странице.
+    Место: REST-представление списка графов на стартовой странице.
+    Вход: QuerySet Graph, обычно уже annotated счетчиками и датой последнего запуска.
+    Выход: список JSON-совместимых словарей с краткими метаданными графов.
+    """
     data = []
 
     for graph in graphs:

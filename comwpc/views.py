@@ -1,7 +1,6 @@
 import json
 import os
 import queue
-import re
 import shutil
 import tempfile
 import time
@@ -9,14 +8,11 @@ import uuid
 from collections import deque
 from typing import Any, Dict
 
-import graphviz
 from django.contrib import messages
-from django.contrib.admin.views.decorators import staff_member_required
 from django.db.models import Count, Max
-from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
+from django.http import JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
-from django.utils.safestring import mark_safe
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_POST
 
@@ -30,7 +26,6 @@ from .execution_history import (
     serialize_execution_sessions,
 )
 from .execution_inputs import (
-    build_execution_input_context as _get_execution_input_context,
     build_execution_input_schema as _build_execution_input_schema,
     parse_execution_request_data as _parse_execution_request_data,
     prepare_execution_initial_data as _prepare_execution_initial_data,
@@ -40,21 +35,39 @@ from .forms import DotImportForm
 from .graph_payloads import build_graph_list_payload, build_graph_payload
 from .models import Edge, Graph, State, Transfer
 
+
 def graph_deep_json(request, graph_id):
     """
+    Что делает: API просмотра графа в React-приложении, режим с раскрытием подграфов.
+    Место: API просмотра графа в React-приложении, режим с раскрытием подграфов.
+    Вход: HTTP GET и graph_id из URL /api/graphs/<id>/deep/.
+    Выход: JsonResponse с графом, ребрами, состояниями, схемой запуска и вложенными подграфами.
+
     Полный endpoint: возвращает граф + все вложенные подграфы рекурсивно.
     GET /api/graphs/<id>/deep/
     """
     graph = get_object_or_404(Graph, pk=graph_id)
     return JsonResponse(build_graph_payload(graph, include_subgraphs=True), safe=True)
 
-#@staff_member_required
+
 def graph_json(request, graph_id):
+    """
+    Что делает: API просмотра одного графа без рекурсивной загрузки подграфов.
+    Место: API просмотра одного графа без рекурсивной загрузки подграфов.
+    Вход: HTTP GET и graph_id из URL /api/graphs/<id>/.
+    Выход: JsonResponse с базовым payload графа.
+    """
     graph = get_object_or_404(Graph, pk=graph_id)
     return JsonResponse(build_graph_payload(graph), safe=True)
 
+
 def graphs_list_json(request):
     """
+    Что делает: API стартовой страницы со списком графов.
+    Место: API стартовой страницы со списком графов.
+    Вход: HTTP GET /api/graphs/.
+    Выход: JsonResponse со списком графов, счетчиками узлов/ребер и краткой историей запусков.
+
     GET /api/graphs/
     Возвращает список всех графов (без вложенных структур)
     """
@@ -71,10 +84,18 @@ def graphs_list_json(request):
     )
 
     return JsonResponse(build_graph_list_payload(graphs), safe=False)
+
+
 # -------------------------------------------------------------------
 
 
 def graph_execution_history_json(request, graph_id):
+    """
+    Что делает: API правой панели истории обходов графа.
+    Место: API правой панели истории обходов графа.
+    Вход: HTTP GET, graph_id и optional query-параметр limit.
+    Выход: JsonResponse со списком последних сессий исполнения и их событиями.
+    """
     graph = get_object_or_404(Graph, pk=graph_id)
 
     try:
@@ -86,352 +107,14 @@ def graph_execution_history_json(request, graph_id):
     sessions = list_graph_execution_sessions(graph, limit=limit)
     return JsonResponse(serialize_execution_sessions(sessions), safe=False)
 
-@staff_member_required
-def graph_interactive_view(request, graph_id):
-    graph = get_object_or_404(Graph, pk=graph_id)
-    session_id = request.GET.get('session')
-    execution_input_schema, execution_input_error = _get_execution_input_context(graph.raw_aini)
-
-    dot = graphviz.Digraph()
-    dot.attr('node', shape='box')
-    dot.attr(rankdir='TB')
-    dot.attr('node', shape='rect', style='rounded,filled', fontname='Roboto')
-
-    # Добавляем состояния с атрибутом data-name (исключая служебные узлы)
-    for state in graph.state_set.all():
-        # Пропускаем служебные узлы
-        if state.name in ['__BEGIN__', '__END__']:
-            continue
-
-        attrs = {
-            'data-name': state.name,
-            'data-id': str(state.id)
-        }
-
-        if state.subgraph:
-            base_name = state.subgraph.name
-            if re.match(r'^.*\d+$', base_name):
-                base_name = re.sub(r'\d+$', '', base_name)
-
-            dot.node(
-                str(state.id),
-                label=state.name,
-                shape='folder',
-                color='orange',
-                style='rounded,filled',
-                fillcolor='moccasin',
-                URL=f"javascript:openSubgraph({state.subgraph.id}, '{base_name}')"
-            )
-        else:
-            color = 'green' if state.is_terminal else 'blue'
-            attrs.update({
-                'color': color,
-                'style': 'rounded,filled' if state.is_terminal else '',
-                'fillcolor': 'lightgreen' if state.is_terminal else 'lightblue'
-            })
-
-        dot.node(
-            str(state.id),
-            label=state.name,
-            **{
-                'data-name': state.name,
-                'data-id': str(state.id),
-                'attributes': json.dumps(attrs)
-            }
-        )
-
-    # Добавляем переходы (исключая связанные со служебными узлами)
-    for transfer in graph.transfer_set.all():
-        # Пропускаем переходы, связанные со служебными узлами
-        if (transfer.source.name in ['__BEGIN__', '__END__'] or
-                transfer.target.name in ['__BEGIN__', '__END__']):
-            continue
-
-        dot.edge(
-            str(transfer.source.id),
-            str(transfer.target.id),
-            label=transfer.edge.comment
-        )
-
-    svg_bytes = dot.pipe(format='svg')
-
-    # Добавляем JavaScript для интерактивности
-    svg_str = svg_bytes.decode('utf-8')
-
-    zoom_script = """
-    <script>
-    function enableZoom(svgElement) {
-        let viewBox = svgElement.viewBox.baseVal;
-        let width = viewBox.width;
-        let height = viewBox.height;
-
-        svgElement.addEventListener('wheel', function(e) {
-            e.preventDefault();
-
-            let zoom = e.deltaY > 0 ? 1.1 : 0.9;
-            let mouseX = e.clientX - svgElement.getBoundingClientRect().left;
-            let mouseY = e.clientY - svgElement.getBoundingClientRect().top;
-
-            let newWidth = viewBox.width * zoom;
-            let newHeight = viewBox.height * zoom;
-
-            // Ограничиваем минимальный и максимальный масштаб
-            if (newWidth < width/10 || newWidth > width*10) return;
-
-            // Вычисляем новые координаты viewBox
-            let newX = viewBox.x - (mouseX / svgElement.clientWidth) * (newWidth - viewBox.width);
-            let newY = viewBox.y - (mouseY / svgElement.clientHeight) * (newHeight - viewBox.height);
-
-            viewBox.x = newX;
-            viewBox.y = newY;
-            viewBox.width = newWidth;
-            viewBox.height = newHeight;
-        });
-
-        // Добавляем обработчик для сброса масштаба по двойному клику
-        svgElement.addEventListener('dblclick', function(e) {
-            e.preventDefault();
-            viewBox.x = 0;
-            viewBox.y = 0;
-            viewBox.width = width;
-            viewBox.height = height;
-        });
-    }
-
-    document.addEventListener('DOMContentLoaded', function() {
-        let svgElement = document.querySelector('svg');
-        enableZoom(svgElement);
-    });
-    </script>
-    """
-
-    svg_str = svg_str.replace('<svg ', '<svg style="max-width: 100%; height: auto;" ')
-    svg_str = add_data_attributes(svg_str, graph)
-
-    return render(request, 'comwpc/graph_interactive.html', {
-        'graph': graph,
-        'execution_session': session_id,
-        'svg_content': mark_safe(svg_str + zoom_script),
-        'is_main_graph': not graph.is_subgraph,
-        'execution_input_schema': execution_input_schema,
-        'execution_input_error': execution_input_error,
-    })
-
-
-@staff_member_required
-def get_transitions(request, graph_id):
-    graph = get_object_or_404(Graph, pk=graph_id)
-    transitions = {}
-
-    for transfer in Transfer.objects.filter(graph=graph):
-        key = f"{transfer.source.name}-{transfer.target.name}"
-        transitions[key] = transfer.edge.comment
-
-    return JsonResponse(transitions)
-
-
-def add_data_attributes(svg_str, graph):
-    """Добавляет data-атрибуты в SVG для интерактивности"""
-    # Создаем маппинг id состояния -> имя
-    state_mapping = {}
-    for state in graph.state_set.all():
-        if state.name not in ['__BEGIN__', '__END__']:
-            state_mapping[str(state.id)] = state.name
-
-    # Создаем маппинг для подграфов
-    subgraph_mapping = {}
-    for state in graph.state_set.all():
-        if state.subgraph:
-            subgraph_mapping[str(state.id)] = {
-                'graph_id': state.subgraph.id,
-                'graph_name': state.subgraph.name
-            }
-
-    # Функция для замены узлов
-    def node_replacer(match):
-        full_node_id = match.group(1)
-        title = match.group(2)
-        state_name = state_mapping.get(title, title)
-
-        # Добавляем атрибуты для подграфов
-        attrs = f'data-name="{state_name}" data-id="{title}"'
-        if title in subgraph_mapping:
-            subgraph_info = subgraph_mapping[title]
-            attrs += f' data-graph-id="{subgraph_info["graph_id"]}" data-graph-name="{subgraph_info["graph_name"]}"'
-
-        return f'<g id="{full_node_id}" class="node" {attrs}>'
-
-    # Функция для замены ребер
-    def edge_replacer(match):
-        full_edge_id = match.group(1)
-        title = match.group(2)
-        parts = title.split('->')
-        if len(parts) == 2:
-            source_id, target_id = parts
-            source_name = state_mapping.get(source_id.strip(), source_id)
-            target_name = state_mapping.get(target_id.strip(), target_id)
-            return f'<g id="{full_edge_id}" class="edge" data-source="{source_name}" data-target="{target_name}">'
-        return match.group(0)
-
-    # Заменяем узлы
-    svg_str = re.sub(
-        r'<g id="(node\d+)" class="node">\s*<title>([^<]+)<\/title>',
-        node_replacer,
-        svg_str
-    )
-
-    # Заменяем ребра
-    svg_str = re.sub(
-        r'<g id="(edge\d+)" class="edge">\s*<title>([^<]+)<\/title>',
-        edge_replacer,
-        svg_str
-    )
-
-    return svg_str
-
-
-@staff_member_required
-def graph_interactive_content(request, graph_id):
-    """Представление для загрузки только содержимого графа (без шаблона)"""
-    graph = get_object_or_404(Graph, pk=graph_id)
-
-    # Генерация SVG аналогична основной функции
-    dot = graphviz.Digraph()
-    dot.attr('node', shape='box')
-    dot.attr(rankdir='LR')
-    dot.attr('node', shape='rect', style='rounded,filled', fontname='Roboto')
-
-    # Добавляем состояния (исключая служебные узлы)
-    for state in graph.state_set.all():
-        if state.name in ['__BEGIN__', '__END__']:
-            continue
-
-        if state.subgraph:
-            dot.node(
-                str(state.id),
-                label=state.name,
-                shape='folder',
-                color='orange',
-                style='rounded,filled',
-                fillcolor='moccasin',
-                URL=f"javascript:openSubgraph({state.subgraph.id})"
-            )
-        else:
-            color = 'green' if state.is_terminal else 'blue'
-            dot.node(
-                str(state.id),
-                label=state.name,
-                color=color,
-                style='rounded,filled' if state.is_terminal else '',
-                fillcolor='lightgreen' if state.is_terminal else 'lightblue'
-            )
-
-    # Добавляем переходы (исключая связанные со служебными узлами)
-    for transfer in graph.transfer_set.all():
-        if (transfer.source.name in ['__BEGIN__', '__END__'] or
-                transfer.target.name in ['__BEGIN__', '__END__']):
-            continue
-
-        dot.edge(
-            str(transfer.source.id),
-            str(transfer.target.id),
-            label=transfer.edge.comment
-        )
-
-    svg_bytes = dot.pipe(format='svg')
-    svg_str = svg_bytes.decode('utf-8')
-    svg_str = svg_str.replace('<svg ', '<svg style="max-width: 100%; height: auto;" ')
-
-    return render(request, 'comwpc/graph_content.html', {
-        'graph': graph,
-        'svg_content': mark_safe(svg_str)
-    })
-
-
-@staff_member_required
-def graph_svg_view(request, graph_id):
-    graph = get_object_or_404(Graph, pk=graph_id)
-    dot = graphviz.Digraph()
-    dot.attr('node', shape='box')
-    dot.attr(rankdir='TB')
-
-    # Устанавливаем единые стили для всех узлов
-    dot.attr('node',
-             shape='rect',
-             style='rounded,filled',
-             fontname='Roboto',
-             fontsize='12',
-             width='1.5',
-             height='0.8')
-
-    # Фильтруем состояния, исключая служебные узлы
-    for state in graph.state_set.all():
-        # Пропускаем служебные узлы
-        if state.name in ['__BEGIN__', '__END__']:
-            continue
-
-        if state.subgraph:
-            base_name = state.subgraph.name
-            if re.match(r'^.*\d+$', base_name):
-                base_name = re.sub(r'\d+$', '', base_name)
-
-            dot.node(
-                str(state.id),
-                label=state.name,
-                shape='folder',
-                color='#e67e22',  # Оранжевый
-                style='rounded,filled',
-                fillcolor='#fff4e5'  # Светло-оранжевый
-            )
-        else:
-            if state.is_terminal:
-                # Терминальный узел - зеленый
-                dot.node(
-                    str(state.id),
-                    label=state.name,
-                    color='#28a745',  # Зеленый
-                    style='rounded,filled',
-                    fillcolor='#e7f5e9'  # Светло-зеленый
-                )
-            else:
-                # Обычный узел - синий
-                dot.node(
-                    str(state.id),
-                    label=state.name,
-                    color='#417690',  # Синий
-                    style='rounded,filled',
-                    fillcolor='#f0f7ff'  # Светло-голубой
-                )
-
-    # Добавляем переходы, исключая те, что связаны со служебными узлами
-    for transfer in graph.transfer_set.all():
-        # Пропускаем переходы, связанные со служебными узлами
-        if (transfer.source.name in ['__BEGIN__', '__END__'] or
-                transfer.target.name in ['__BEGIN__', '__END__']):
-            continue
-
-        dot.edge(
-            str(transfer.source.id),
-            str(transfer.target.id),
-            label=transfer.edge.comment
-        )
-
-    # Генерируем SVG
-    svg_bytes = dot.pipe(format='svg')
-    svg_str = svg_bytes.decode('utf-8')
-
-    # Добавляем data-атрибуты
-    svg_str = add_data_attributes(svg_str, graph)
-
-    svg_str = re.sub(
-        r'<svg ',
-        f'<svg data-graph-name="{graph.name}" ',
-        svg_str
-    )
-
-    return HttpResponse(svg_str, content_type='image/svg+xml')
 
 def _save_uploaded_file(uploaded_file, target_dir):
+    """
+    Что делает: служебный шаг импорта DOT/aDOT файлов.
+    Место: служебный шаг импорта DOT/aDOT файлов.
+    Вход: Django UploadedFile и путь временной директории.
+    Выход: полный путь сохраненного файла на диске.
+    """
     target_path = os.path.join(target_dir, uploaded_file.name)
     with open(target_path, "wb+") as destination:
         for chunk in uploaded_file.chunks():
@@ -440,6 +123,12 @@ def _save_uploaded_file(uploaded_file, target_dir):
 
 
 def _read_and_validate_aini(request):
+    """
+    Что делает: общий парсер aINI для API и admin-импорта графов.
+    Место: общий парсер aINI для API и admin-импорта графов.
+    Вход: HTTP-запрос с raw_aini в POST или aini_file в FILES.
+    Выход: строка aINI; при невалидном UTF-8 или формате бросает ValueError.
+    """
     raw_aini = request.POST.get("raw_aini", "") or ""
     aini_file = request.FILES.get("aini_file")
     if aini_file is not None:
@@ -455,6 +144,12 @@ def _read_and_validate_aini(request):
 
 
 def _collect_graph_stats(django_graph):
+    """
+    Что делает: формирование краткой статистики после импорта графа.
+    Место: формирование краткой статистики после импорта графа.
+    Вход: созданная или найденная модель Graph.
+    Выход: словарь с числом состояний, ребер и подграфов.
+    """
     return {
         "states": django_graph.state_set.count(),
         "edges": Edge.objects.filter(transfer__graph=django_graph).count(),
@@ -463,6 +158,12 @@ def _collect_graph_stats(django_graph):
 
 
 def _import_graph_from_upload(dot_file, raw_aini=""):
+    """
+    Что делает: общий сценарий импорта загруженного DOT/aDOT из API и admin-формы.
+    Место: общий сценарий импорта загруженного DOT/aDOT из API и admin-формы.
+    Вход: UploadedFile с графом и optional сырой aINI.
+    Выход: tuple (Graph|None, stats|None, existing_graph|None).
+    """
     with tempfile.TemporaryDirectory() as temp_dir:
         main_temp_path = _save_uploaded_file(dot_file, temp_dir)
         parser = Parser()
@@ -490,6 +191,12 @@ def _import_graph_from_upload(dot_file, raw_aini=""):
 @csrf_exempt
 @require_POST
 def import_dot_api(request):
+    """
+    Что делает: REST endpoint импорта графа из React-страницы импорта.
+    Место: REST endpoint импорта графа из React-страницы импорта.
+    Вход: multipart POST с dot_file и optional raw_aini/aini_file.
+    Выход: JsonResponse с success, graph_id, graph_name и stats либо ошибкой.
+    """
     form = DotImportForm(request.POST, request.FILES)
 
     if not form.is_valid():
@@ -528,10 +235,15 @@ def import_dot_api(request):
         }, status=500)
 
 
-#@staff_member_required
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
 def import_dot(request):
+    """
+    Что делает: legacy/admin endpoint импорта графа через HTML/AJAX форму.
+    Место: legacy/admin endpoint импорта графа через HTML/AJAX форму.
+    Вход: GET для формы или POST multipart с dot_file и optional aINI.
+    Выход: HTML-форма или JsonResponse для AJAX-импорта.
+    """
     if request.method == "POST":
         form = DotImportForm(request.POST, request.FILES)
         if not form.is_valid():
@@ -576,7 +288,19 @@ def import_dot(request):
 
 
 def import_progress(request):
+    """
+    Что делает: демонстрационный SSE endpoint прогресса импорта.
+    Место: демонстрационный SSE endpoint прогресса импорта.
+    Вход: HTTP GET.
+    Выход: StreamingHttpResponse text/event-stream с искусственными progress-событиями.
+    """
     def event_stream():
+        """
+        Что делает: генератор сообщений import_progress.
+        Место: генератор сообщений import_progress.
+        Вход: нет; использует локальный счетчик.
+        Выход: строки SSE data с progress/message.
+        """
         # Эмуляция прогресса
         for i in range(1, 101):
             time.sleep(0.5)
@@ -588,6 +312,12 @@ def import_progress(request):
 
 
 def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processed_graphs, parent_graph=None, raw_aini=""):
+    """
+    Что делает: ядро импорта DOT/aDOT в Django-модели Graph/State/Edge/Transfer.
+    Место: ядро импорта DOT/aDOT в Django-модели Graph/State/Edge/Transfer.
+    Вход: comsdk Parser/Graph, путь к DOT, temp_dir, cache processed_graphs, optional parent_graph/raw_aini.
+    Выход: модель Graph; рекурсивно создает или переиспользует подграфы, состояния и переходы.
+    """
     """Рекурсивно обрабатывает граф и его подграфы"""
     if dot_path in processed_graphs:
         return processed_graphs[dot_path]
@@ -888,6 +618,12 @@ event_service = get_event_service()
 #@csrf_exempt
 #@require_http_methods(["POST", "OPTIONS"])
 def start_execution(request, graph_id):
+    """
+    Что делает: endpoint запуска обхода графа из React/legacy UI.
+    Место: endpoint запуска обхода графа из React/legacy UI.
+    Вход: HTTP POST, graph_id и JSON/POST data с параметрами запуска.
+    Выход: JsonResponse с session_id; создает историю запуска и отправляет Celery-задачу.
+    """
     graph = get_object_or_404(Graph, pk=graph_id)
     session_id = str(uuid.uuid4())
 
@@ -910,7 +646,19 @@ def start_execution(request, graph_id):
 
 
 def execution_events(request, session_id):
+    """
+    Что делает: SSE endpoint live-событий конкретной сессии исполнения.
+    Место: SSE endpoint live-событий конкретной сессии исполнения.
+    Вход: HTTP GET и session_id из URL /execution/events/<session_id>/.
+    Выход: StreamingHttpResponse text/event-stream с событиями графа и keep-alive ping.
+    """
     def event_generator():
+        """
+        Что делает: адаптер event_stream к Django StreamingHttpResponse.
+        Место: адаптер event_stream к Django StreamingHttpResponse.
+        Вход: замыкание session_id.
+        Выход: генератор строк SSE; тихо завершается при отключении клиента.
+        """
         try:
             for event in event_stream(session_id):
                 yield event
@@ -924,10 +672,22 @@ def execution_events(request, session_id):
     return response
 
 def event_stream(session_id):
+    """
+    Что делает: мост между Redis pub/sub событиями исполнения и SSE-ответом Django.
+    Место: мост между Redis pub/sub событиями исполнения и SSE-ответом Django.
+    Вход: session_id сессии исполнения.
+    Выход: генератор строк SSE data/ping; управляет подпиской и отпиской от event_service.
+    """
     # Создаем очередь для получения событий
     event_queue = queue.Queue()
     # Колбэк, который будет помещать события в очередь
     def event_handler(event):
+        """
+        Что делает: callback подписки event_service внутри event_stream.
+        Место: callback подписки event_service внутри event_stream.
+        Вход: dict события исполнения из Redis.
+        Выход: None; помещает событие в потокобезопасную очередь SSE-генератора.
+        """
         event_queue.put(event)
     # Подписываемся на события
     event_service.subscribe(session_id, event_handler)

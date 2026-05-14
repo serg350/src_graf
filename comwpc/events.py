@@ -12,11 +12,23 @@ logger = logging.getLogger(__name__)
 
 class ExecutionEventService:
     def __init__(self):
+        """
+        Что делает: инфраструктурный сервис live-событий исполнения.
+        Место: инфраструктурный сервис live-событий исполнения.
+        Вход: нет; конфигурация Redis берется из Django settings.
+        Выход: экземпляр с Redis-клиентом и локальным реестром подписок.
+        """
         self.redis = redis.Redis(**settings.EVENT_REDIS_CONFIG)
         self._subscriptions = {}
         self._lock = threading.Lock()
 
     def publish(self, session_id, event):
+        """
+        Что делает: публикация событий из Celery-исполнителя в историю и live-канал.
+        Место: публикация событий из Celery-исполнителя в историю и live-канал.
+        Вход: session_id и словарь события исполнения графа.
+        Выход: None; событие записывается в БД и публикуется в Redis pub/sub.
+        """
         try:
             record_execution_event(session_id, event)
         except Exception:  # pragma: no cover - keep the live stream working even if persistence fails
@@ -30,9 +42,21 @@ class ExecutionEventService:
             self.publish(session_id, event)
 
     def _reconnect(self):
+        """
+        Что делает: восстановление Redis-соединения сервиса событий.
+        Место: восстановление Redis-соединения сервиса событий.
+        Вход: нет.
+        Выход: None; заменяет self.redis новым клиентом из settings.
+        """
         self.redis = redis.Redis(**settings.EVENT_REDIS_CONFIG)
 
     def subscribe(self, session_id, callback):
+        """
+        Что делает: подключение SSE-потока к Redis-каналу конкретной сессии исполнения.
+        Место: подключение SSE-потока к Redis-каналу конкретной сессии исполнения.
+        Вход: session_id и callback, который принимает dict события.
+        Выход: None; запускает daemon-поток прослушивания Redis.
+        """
         try:
             self.redis.ping()
         except redis.ConnectionError:
@@ -43,6 +67,12 @@ class ExecutionEventService:
         pubsub.subscribe(f"execution:{session_id}")
 
         def listener():
+            """
+            Что делает: фоновый worker одной подписки Redis pub/sub.
+            Место: фоновый worker одной подписки Redis pub/sub.
+            Вход: замыкание с pubsub, stop_event, callback и session_id.
+            Выход: None; читает Redis-сообщения и передает decoded события в callback.
+            """
             try:
                 for message in pubsub.listen():
                     if stop_event.is_set():
@@ -74,6 +104,12 @@ class ExecutionEventService:
         thread.start()
 
     def unsubscribe(self, session_id, handler):
+        """
+        Что делает: завершение подписки SSE-клиента на события исполнения.
+        Место: завершение подписки SSE-клиента на события исполнения.
+        Вход: session_id и callback-обработчик, который был передан в subscribe.
+        Выход: None; удаляет подписку из реестра и отписывает pubsub от Redis-канала.
+        """
         with self._lock:
             subscriptions = self._subscriptions.get(session_id, [])
             remaining = []
@@ -104,6 +140,12 @@ _event_service = None
 
 
 def get_event_service():
+    """
+    Что делает: singleton-доступ к сервису live-событий для views и Celery tasks.
+    Место: singleton-доступ к сервису live-событий для views и Celery tasks.
+    Вход: нет.
+    Выход: общий экземпляр ExecutionEventService в текущем процессе.
+    """
     global _event_service
     if _event_service is None:
         _event_service = ExecutionEventService()

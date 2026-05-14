@@ -11,6 +11,12 @@ logger = logging.getLogger(__name__)
 
 
 def create_execution_session(graph: Graph, session_id: str, initial_data: dict) -> GraphExecutionSession:
+    """
+    Что делает: стартовая запись истории перед отправкой графа в Celery.
+    Место: стартовая запись истории перед отправкой графа в Celery.
+    Вход: граф, UUID-сессия исполнения и начальные данные запуска.
+    Выход: созданная GraphExecutionSession со статусом pending.
+    """
     return GraphExecutionSession.objects.create(
         graph=graph,
         session_id=session_id,
@@ -19,6 +25,12 @@ def create_execution_session(graph: Graph, session_id: str, initial_data: dict) 
 
 
 def list_graph_execution_sessions(graph: Graph, limit: int = 12):
+    """
+    Что делает: API истории запусков на странице просмотра графа.
+    Место: API истории запусков на странице просмотра графа.
+    Вход: граф и максимальное число сессий.
+    Выход: список последних GraphExecutionSession с заранее подгруженными событиями.
+    """
     events_qs = GraphExecutionEvent.objects.order_by("sequence")
     queryset = (
         GraphExecutionSession.objects.filter(graph=graph)
@@ -29,6 +41,12 @@ def list_graph_execution_sessions(graph: Graph, limit: int = 12):
 
 
 def serialize_execution_event(event: GraphExecutionEvent) -> dict:
+    """
+    Что делает: сериализация события истории для REST-ответа фронтенду.
+    Место: сериализация события истории для REST-ответа фронтенду.
+    Вход: GraphExecutionEvent из БД.
+    Выход: JSON-совместимый словарь события.
+    """
     return {
         "sequence": event.sequence,
         "event": event.event_type,
@@ -40,6 +58,12 @@ def serialize_execution_event(event: GraphExecutionEvent) -> dict:
 
 
 def serialize_execution_session(session: GraphExecutionSession) -> dict:
+    """
+    Что делает: сериализация одной сессии истории исполнения.
+    Место: сериализация одной сессии истории исполнения.
+    Вход: GraphExecutionSession с events relation.
+    Выход: JSON-совместимый словарь с метаданными сессии и списком событий.
+    """
     return {
         "session_id": session.session_id,
         "status": session.status,
@@ -54,10 +78,22 @@ def serialize_execution_session(session: GraphExecutionSession) -> dict:
 
 
 def serialize_execution_sessions(sessions) -> list[dict]:
+    """
+    Что делает: сериализация списка запусков для endpoint'а истории.
+    Место: сериализация списка запусков для endpoint'а истории.
+    Вход: iterable GraphExecutionSession.
+    Выход: список словарей, готовый для JsonResponse.
+    """
     return [serialize_execution_session(session) for session in sessions]
 
 
 def record_execution_event(session_id: str, event: dict) -> None:
+    """
+    Что делает: единая точка записи live-событий исполнения в историю.
+    Место: единая точка записи live-событий исполнения в историю.
+    Вход: session_id и событие из execution listener.
+    Выход: None; создает GraphExecutionEvent и обновляет статус GraphExecutionSession.
+    """
     try:
         with transaction.atomic():
             session = GraphExecutionSession.objects.select_for_update().get(session_id=session_id)
@@ -95,6 +131,12 @@ def record_execution_event(session_id: str, event: dict) -> None:
 
 
 def _resolve_event_timestamp(event: dict):
+    """
+    Что делает: нормализация времени события перед записью в БД.
+    Место: нормализация времени события перед записью в БД.
+    Вход: словарь события с optional numeric timestamp.
+    Выход: timezone-aware datetime; при отсутствии timestamp возвращает текущее время.
+    """
     timestamp = event.get("timestamp")
     if isinstance(timestamp, (int, float)):
         return datetime.fromtimestamp(timestamp, tz=dt_timezone.utc)
@@ -102,6 +144,12 @@ def _resolve_event_timestamp(event: dict):
 
 
 def _update_session_status(session: GraphExecutionSession, event: dict, occurred_at):
+    """
+    Что делает: бизнес-правила статуса сессии исполнения.
+    Место: бизнес-правила статуса сессии исполнения.
+    Вход: mutable GraphExecutionSession, событие и время события.
+    Выход: None; меняет status, finished_at и error_message на переданной модели.
+    """
     event_type = str(event.get("event") or "")
     message = str(event.get("message") or "")
 

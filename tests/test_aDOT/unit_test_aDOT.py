@@ -45,6 +45,23 @@ class TestADOTParser(unittest.TestCase):
         self.assertTrue(result)
         self.assertEqual(data["a"], 0)
 
+    def test_terminal_state_allows_alternative_incoming_edges(self):
+        graph = self.parser.parse_file(
+            os.path.join(self.test_files_dir, "composite_modulus_calculation.adot")
+        )
+        data = {
+            "E_target": 150,
+            "max_iterations": 20,
+            "tolerance": 1,
+            "E_fiber": 230,
+            "E_matrix": 3.5,
+        }
+
+        result = graph.run(data)
+
+        self.assertTrue(result)
+        self.assertIn("optimal_E", data)
+
     def test_branching_graph(self):
         """Тест графа с ветвлениями"""
         graph = self.parser.parse_file(os.path.join(self.test_files_dir, "branching.adot"))

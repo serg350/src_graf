@@ -1,16 +1,11 @@
 # admin.py
 from django.contrib import admin
 from .models import Graph, State, Edge, Transfer
-from django.utils.html import format_html
-import graphviz
-from io import BytesIO
-import base64
 from django.urls import reverse, path
-from django.utils.safestring import mark_safe
 
+from .admin_visualization.admin_fields import GraphVisualizationAdminMixin
 from .views import import_dot
 
-from django.contrib.admin import AdminSite
 
 admin.site.site_header = "Проект GCD"  # Заголовок в шапке
 admin.site.site_title = "Проект GCD"  # Текст для вкладки браузера
@@ -25,130 +20,20 @@ class TransferInline(admin.TabularInline):
 
 
 @admin.register(Graph)
-class GraphAdmin(admin.ModelAdmin):
+class GraphAdmin(GraphVisualizationAdminMixin, admin.ModelAdmin):
     list_display = ('name', 'created_at', 'graph_preview')
     inlines = [TransferInline]
     readonly_fields = ('graph_preview', 'graph_interactive')
     fields = ('name', 'parent_graph', 'is_subgraph', 'raw_dot', 'raw_aini', 'graph_preview', 'graph_interactive')
     search_fields = ('name',)  # Добавлено для автозаполнения
 
-    def graph_preview(self, obj):
-        if not obj.pk:
-            return "Сначала создайте граф"
-
-        dot = graphviz.Digraph()
-        dot.attr('node', shape='rect', style='rounded,filled', fontname='Roboto')
-        dot.attr(rankdir='LR')
-
-        for state in obj.state_set.all():
-            if state.subgraph:
-                dot.node(
-                    str(state.id),
-                    label=state.name,
-                    shape='folder',
-                    color='#e67e22',  # Оранжевый
-                    style='rounded,filled',
-                    fillcolor='#fff4e5'  # Светло-оранжевый
-                )
-            else:
-                if state.is_terminal:
-                    # Терминальный узел
-                    dot.node(
-                        str(state.id),
-                        label=state.name,
-                        color='#28a745',  # Зеленый
-                        style='rounded,filled',
-                        fillcolor='#e7f5e9'  # Светло-зеленый
-                    )
-                else:
-                    # Обычный узел
-                    dot.node(
-                        str(state.id),
-                        label=state.name,
-                        color='#417690',  # Синий
-                        style='rounded,filled',
-                        fillcolor='#f0f7ff'  # Светло-голубой
-                    )
-
-        # Добавляем переходы
-        for transfer in Transfer.objects.filter(source__graph=obj):
-            dot.edge(
-                str(transfer.source.id),
-                str(transfer.target.id),
-                label=transfer.edge.comment
-            )
-
-        try:
-            svg_bytes = dot.pipe(format='svg')
-            svg_str = svg_bytes.decode('utf-8')
-
-            zoom_script = """
-            <script>
-            function enableZoom(svgElement) {
-                let viewBox = svgElement.viewBox.baseVal;
-                let width = viewBox.width;
-                let height = viewBox.height;
-
-                svgElement.addEventListener('wheel', function(e) {
-                    e.preventDefault();
-
-                    let zoom = e.deltaY > 0 ? 1.1 : 0.9;
-                    let mouseX = e.clientX - svgElement.getBoundingClientRect().left;
-                    let mouseY = e.clientY - svgElement.getBoundingClientRect().top;
-
-                    let newWidth = viewBox.width * zoom;
-                    let newHeight = viewBox.height * zoom;
-
-                    if (newWidth < width/10 || newWidth > width*10) return;
-
-                    let newX = viewBox.x - (mouseX / svgElement.clientWidth) * (newWidth - viewBox.width);
-                    let newY = viewBox.y - (mouseY / svgElement.clientHeight) * (newHeight - viewBox.height);
-
-                    viewBox.x = newX;
-                    viewBox.y = newY;
-                    viewBox.width = newWidth;
-                    viewBox.height = newHeight;
-                });
-
-                svgElement.addEventListener('dblclick', function(e) {
-                    e.preventDefault();
-                    viewBox.x = 0;
-                    viewBox.y = 0;
-                    viewBox.width = width;
-                    viewBox.height = height;
-                });
-            }
-
-            document.addEventListener('DOMContentLoaded', function() {
-                let svgElements = document.querySelectorAll('svg.graphviz');
-                svgElements.forEach(enableZoom);
-            });
-            </script>
-            """
-
-            svg_str = svg_str.replace('<svg ', '<svg class="graphviz" ')
-            return mark_safe(f"""
-            <div style="width: 100%; overflow: auto; border: 1px solid #ddd;">
-                {svg_str}
-                {zoom_script}
-            </div>
-            """)
-        except Exception as e:
-            return format_html(f"<div style='color: red;'>Ошибка визуализации: {str(e)}</div>")
-
-    graph_preview.short_description = "Визуализация графа"
-
-    def graph_interactive(self, obj):
-        if not obj.pk:
-            return "Сначала создайте граф"
-        return format_html(
-            '<a href="{}" class="button">Открыть визуализацию</a>',
-            reverse('graph_visualization', args=[obj.id])
-        )
-
-    graph_interactive.short_description = "Интерактивный просмотр"
-
     def get_urls(self):
+        """
+        Что делает: расширение маршрутов Django admin для модели Graph.
+        Место: расширение маршрутов Django admin для модели Graph.
+        Вход: self GraphAdmin.
+        Выход: список URL, где import-dot добавлен перед стандартными admin URL.
+        """
         urls = super().get_urls()
         custom_urls = [
             path('import-dot/',
@@ -159,6 +44,12 @@ class GraphAdmin(admin.ModelAdmin):
         return custom_urls + urls
 
     def changelist_view(self, request, extra_context=None):
+        """
+        Что делает: страница списка графов в Django admin.
+        Место: страница списка графов в Django admin.
+        Вход: HTTP-запрос админки и optional extra_context.
+        Выход: стандартный admin response с добавленным import_dot_url.
+        """
         extra_context = extra_context or {}
         # Формируем URL без указания приложения
         extra_context['import_dot_url'] = reverse('admin:import_dot')
@@ -173,6 +64,12 @@ class StateAdmin(admin.ModelAdmin):
     autocomplete_fields = ['subgraph', 'graph']  # Добавлен graph для автозаполнения
 
     def has_subgraph(self, obj):
+        """
+        Что делает: boolean-колонка State admin.
+        Место: boolean-колонка State admin.
+        Вход: объект State.
+        Выход: True, если состояние связано с подграфом.
+        """
         return obj.subgraph is not None
 
     has_subgraph.boolean = True
@@ -185,9 +82,21 @@ class EdgeAdmin(admin.ModelAdmin):
     search_fields = ('comment',)
 
     def pred_func(self, obj):
+        """
+        Что делает: вычисляемая колонка Edge admin для функции-предиката.
+        Место: вычисляемая колонка Edge admin для функции-предиката.
+        Вход: объект Edge.
+        Выход: строка module.function для предиката.
+        """
         return f"{obj.pred_module}.{obj.pred_func}"
 
     def morph_func(self, obj):
+        """
+        Что делает: вычисляемая колонка Edge admin для функции-морфизма.
+        Место: вычисляемая колонка Edge admin для функции-морфизма.
+        Вход: объект Edge.
+        Выход: строка module.function для морфизма.
+        """
         return f"{obj.morph_module}.{obj.morph_func}"
 
 

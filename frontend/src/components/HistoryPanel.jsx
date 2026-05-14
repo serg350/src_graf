@@ -223,9 +223,9 @@ export default function HistoryPanel({ sessions, isLoading, error }) {
                   События ещё не поступили.
                 </div>
               ) : (
-                session.events.map((event) => (
+                session.events.map((event, index) => (
                   <div
-                    key={`${session.session_id}-${event.sequence}`}
+                    key={`${session.session_id}-${event.sequence}-${index}`}
                     style={{
                       display: "grid",
                       gap: 8,

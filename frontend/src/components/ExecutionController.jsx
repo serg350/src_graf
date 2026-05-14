@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import ExecutionStartModal from "./ExecutionStartModal";
 import { startExecution } from "../services/executionApi";
-import { connectExecution } from "../services/executionSSE";
+import { connectExecution } from "../services/executionEvents";
 
 function buildInitialFormValues(schema) {
   const values = {};

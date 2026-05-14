@@ -1,17 +1,6 @@
 const rawApiBaseUrl = (import.meta.env.VITE_API_BASE_URL || "").trim();
 
 function detectDefaultApiBaseUrl() {
-  if (typeof window === "undefined") {
-    return "";
-  }
-
-  const { protocol, hostname, port } = window.location;
-  const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1";
-
-  if (isLocalHost && port === "5173") {
-    return `${protocol}//${hostname}:8000`;
-  }
-
   return "";
 }
 

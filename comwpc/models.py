@@ -18,6 +18,12 @@ class Graph(models.Model):
         ]
 
     def __str__(self):
+        """
+        Что делает: человекочитаемое имя графа в админке, логах и Django shell.
+        Место: человекочитаемое имя графа в админке, логах и Django shell.
+        Вход: экземпляр Graph.
+        Выход: строковое имя графа.
+        """
         return self.name
 
 class State(models.Model):
@@ -30,6 +36,12 @@ class State(models.Model):
     is_subgraph_node = models.BooleanField(default=False)
 
     def __str__(self):
+        """
+        Что делает: отображение состояния в админке и связях переходов.
+        Место: отображение состояния в админке и связях переходов.
+        Вход: экземпляр State.
+        Выход: строка с именем состояния и родительским графом.
+        """
         return f"{self.name} ({self.graph})"
 
 class Edge(models.Model):
@@ -40,6 +52,12 @@ class Edge(models.Model):
     morph_func = models.CharField(max_length=255)
 
     def __str__(self):
+        """
+        Что делает: отображение ребра/морфизма в админке и inline-переходах.
+        Место: отображение ребра/морфизма в админке и inline-переходах.
+        Вход: экземпляр Edge.
+        Выход: комментарий ребра как основная подпись.
+        """
         return self.comment
 
 
@@ -88,6 +106,12 @@ class GraphExecutionSession(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self):
+        """
+        Что делает: отображение сессии исполнения в админке и отладке истории.
+        Место: отображение сессии исполнения в админке и отладке истории.
+        Вход: экземпляр GraphExecutionSession.
+        Выход: строка с именем графа и session_id.
+        """
         return f"{self.graph.name} [{self.session_id}]"
 
 
@@ -116,4 +140,10 @@ class GraphExecutionEvent(models.Model):
         ]
 
     def __str__(self):
+        """
+        Что делает: отображение события исполнения в админке и отладке истории.
+        Место: отображение события исполнения в админке и отладке истории.
+        Вход: экземпляр GraphExecutionEvent.
+        Выход: строка session_id:sequence:event_type.
+        """
         return f"{self.session.session_id}:{self.sequence}:{self.event_type}"
