@@ -12,6 +12,7 @@ export function flattenGraphWithSubgraphs(graph, showSubgraphs) {
         type: "subgraph",
         data: {
           label: n.label,
+          comment: n.comment || "",
           subgraphId: n.subgraph,
         },
         position: { x: 0, y: 0 },
@@ -19,7 +20,10 @@ export function flattenGraphWithSubgraphs(graph, showSubgraphs) {
     } else {
       outNodes.push({
         id: n.id,
-        data: { label: n.label },
+        data: {
+          label: n.label,
+          comment: n.comment || "",
+        },
         position: { x: 0, y: 0 },
       });
     }
@@ -31,6 +35,7 @@ export function flattenGraphWithSubgraphs(graph, showSubgraphs) {
       source: e.source,
       target: e.target,
       label: e.label,
+      comment: e.comment || e.label || "",
     });
   });
 

@@ -8,7 +8,7 @@ digraph ATTRIBUTES_TEST {
     // Узлы с атрибутами
     NODE1 [selector=SEL, parallelism=threading]
 
-    NODE2 [subgraph=D:/Dev_MGTY/src/tests/test_aDOT/test_adot_files/preprocess.adot]
+    NODE2 [subgraph=./tests/test_aDOT/test_adot_files/preprocess.adot]
 
     // Ребра с атрибутами
     EDGE1 [predicate=PRED, function=FUNC1, comment="Первое ребро с полным набором атрибутов"]

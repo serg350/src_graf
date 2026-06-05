@@ -1,17 +1,17 @@
 services:
-  web:
-    build: .
-    command: python manage.py runserver 0.0.0.0:8000
-    volumes:
-      - static_value:/app/static/
-      - media_value:/app/media/
-    ports:
-      - "8000:8000"
-    depends_on:
-      - redis
-    environment:
-      - REDIS_URL=redis://redis:6379/0
-      - EVENT_SERVICE_URL=redis://redis:6379/1
+  #web:
+  #  build: .
+  #  command: python manage.py runserver 0.0.0.0:8000
+  #  volumes:
+  #    - static_value:/app/static/
+  #    - media_value:/app/media/
+  #  ports:
+  #    - "8000:8000"
+  #  depends_on:
+  #    - redis
+  #  environment:
+  #    - REDIS_URL=redis://redis:6379/0
+  #    - EVENT_SERVICE_URL=redis://redis:6379/1
 
   celery:
     build: .
@@ -20,6 +20,8 @@ services:
       - .:/app
     depends_on:
       - redis
+      - cpp-worker-1
+      - cpp-worker-2
     environment:
       - REDIS_URL=redis://redis:6379/0
       - EVENT_SERVICE_URL=redis://redis:6379/1
@@ -30,6 +32,22 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
+
+  cpp-worker-1:
+    build: ./cpp_worker
+    environment:
+      - PORT=9000
+      - WORKER_ID=cpp-worker-1
+    ports:
+      - "9001:9000"
+
+  cpp-worker-2:
+    build: ./cpp_worker
+    environment:
+      - PORT=9000
+      - WORKER_ID=cpp-worker-2
+    ports:
+      - "9002:9000"
 
 volumes:
   static_value:

@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Django/local runtime
+db.sqlite3
+media/
+static/
+staticfiles/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Environment and editor files
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/
+
+# OS files
+Thumbs.db
+.DS_Store

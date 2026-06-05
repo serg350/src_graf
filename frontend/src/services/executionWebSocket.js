@@ -31,9 +31,5 @@ export function connectExecutionWebSocket(sessionId, onEvent) {
     console.error("WebSocket error", error);
   };
 
-  ws.onclose = (event) => {
-    console.log("WebSocket closed", event.code, event.reason);
-  };
-
   return () => ws.close();
 }

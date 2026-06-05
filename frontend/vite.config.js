@@ -27,7 +27,7 @@ export default defineConfig({
         target: backendTarget,
         changeOrigin: true,
       },
-      "/graph": {
+      "^/graph/": {
         target: backendTarget,
         changeOrigin: true,
       },

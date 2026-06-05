@@ -28,6 +28,7 @@ def build_graph_payload(graph, include_subgraphs: bool = False):
             {
                 "id": str(state.id),
                 "label": state.name,
+                "comment": state.comment or "",
                 "is_terminal": bool(getattr(state, "is_terminal", False)),
                 "subgraph": subgraph_id,
             }
@@ -44,6 +45,7 @@ def build_graph_payload(graph, include_subgraphs: bool = False):
                 "source": str(transfer.source.id),
                 "target": str(transfer.target.id),
                 "label": (transfer.edge.comment if transfer.edge else "") or "",
+                "comment": (transfer.edge.comment if transfer.edge else "") or "",
             }
         )
 

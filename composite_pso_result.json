@@ -1,0 +1,32 @@
+{
+  "TaskName": "composite_pso_demo",
+  "iterations": 2,
+  "converged": true,
+  "target_E": 120.0,
+  "best_Vf": 0.5173234719438266,
+  "best_theta_deg": 3.963984828489945,
+  "best_E_effective": 119.59118291876794,
+  "best_density": 1.5103940831662959,
+  "best_modulus_error": 0.4088170812320584,
+  "best_score": 0.4107973770737436,
+  "history": [
+    {
+      "iteration": 0,
+      "score": 4.816478315387578,
+      "modulus_error": 4.8141479393214155,
+      "Vf": 0.5056541311278976,
+      "theta_deg": 6.519265800078848,
+      "E_effective": 115.18585206067858,
+      "density": 1.5033924786767385
+    },
+    {
+      "iteration": 1,
+      "score": 0.4107973770737436,
+      "modulus_error": 0.4088170812320584,
+      "Vf": 0.5173234719438266,
+      "theta_deg": 3.963984828489945,
+      "E_effective": 119.59118291876794,
+      "density": 1.5103940831662959
+    }
+  ]
+}

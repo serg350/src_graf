@@ -1,0 +1,8 @@
+digraph SELECTOR_ON_EDGE {
+    SELECTOR [module=test_funcs.simplest, entry_func=branch_selector]
+
+    __BEGIN__ -> BRANCH
+    BRANCH -> LEFT, RIGHT [selector=SELECTOR]
+    LEFT -> __END__
+    RIGHT -> __END__
+}

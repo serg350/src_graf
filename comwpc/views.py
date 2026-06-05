@@ -460,16 +460,24 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
                 defaults={
                     'is_terminal': current.is_term_state,
                     'subgraph': subgraph_obj,
+                    'comment': current.comment or "",
                     'array_keys_mapping': current.array_keys_mapping,
                     'is_subgraph_node': subgraph_obj is not None
                 }
             )
 
             # Если состояние уже существует - обновляем его подграф
-            if not created and django_state.subgraph != subgraph_obj:
-                django_state.subgraph = subgraph_obj
-                django_state.is_subgraph_node = subgraph_obj is not None
-                django_state.save()
+            if not created:
+                changed_fields = []
+                if django_state.subgraph != subgraph_obj:
+                    django_state.subgraph = subgraph_obj
+                    django_state.is_subgraph_node = subgraph_obj is not None
+                    changed_fields.extend(["subgraph", "is_subgraph_node"])
+                if django_state.comment != (current.comment or ""):
+                    django_state.comment = current.comment or ""
+                    changed_fields.append("comment")
+                if changed_fields:
+                    django_state.save(update_fields=changed_fields)
                 print(f"Обновлен подграф для состояния {django_state.name}")
 
             state_mapping[current.name] = django_state
@@ -575,16 +583,24 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
                     defaults={
                         'is_terminal': target.is_term_state,
                         'subgraph': target_subgraph_obj,
+                        'comment': target.comment or "",
                         'array_keys_mapping': target.array_keys_mapping,
                         'is_subgraph_node': target_subgraph_obj is not None
                     }
                 )
 
                 # Обновляем подграф если состояние уже существовало
-                if not created and target_state.subgraph != target_subgraph_obj:
-                    target_state.subgraph = target_subgraph_obj
-                    target_state.is_subgraph_node = target_subgraph_obj is not None
-                    target_state.save()
+                if not created:
+                    changed_fields = []
+                    if target_state.subgraph != target_subgraph_obj:
+                        target_state.subgraph = target_subgraph_obj
+                        target_state.is_subgraph_node = target_subgraph_obj is not None
+                        changed_fields.extend(["subgraph", "is_subgraph_node"])
+                    if target_state.comment != (target.comment or ""):
+                        target_state.comment = target.comment or ""
+                        changed_fields.append("comment")
+                    if changed_fields:
+                        target_state.save(update_fields=changed_fields)
                     print(f"Обновлен подграф для целевого состояния {target_state.name}")
 
                 state_mapping[target_name] = target_state

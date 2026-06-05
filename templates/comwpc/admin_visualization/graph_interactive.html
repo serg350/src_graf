@@ -1,0 +1,2195 @@
+{% extends "admin/base_site.html" %}
+
+{% block branding %}
+<h1 id="site-name"><a href="{% url 'admin:index' %}">{{ site_header|default:_('Django administration') }}</a></h1>
+{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Главная</a>
+    &rsaquo; <a href="{% url 'admin:app_list' app_label='comwpc' %}">Comwpc</a>
+    &rsaquo; <a href="{% url 'admin:comwpc_graph_changelist' %}">Графы</a>
+    &rsaquo; Интерактивная визуализация: {{graph.name}}
+</div>
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+    :root {
+        --primary: #417690;  /* Основной синий Django */
+        --primary-light: #79aec8;  /* Светлый синий Django */
+        --secondary: #5b80a2;  /* Дополнительный синий */
+        --error: #ba2121;  /* Красный Django */
+        --success: #5cb85c;  /* Зеленый для успешных операций */
+        --text-primary: #333;  /* Основной текст */
+        --text-secondary: #666;  /* Вторичный текст */
+        --divider: #ddd;  /* Разделители */
+        --background: #f8f8f8;  /* Фон страницы */
+        --surface: #fff;  /* Поверхности элементов */
+        --node-bg: #f0f7ff;  /* Фон узлов */
+        --terminal-bg: #e7f5e9;  /* Фон терминальных узлов */
+        --subgraph-bg: #fff4e5;  /* Фон подграфов */
+    }
+
+    body {
+        background-color: var(--background);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        color: var(--text-primary);
+    }
+
+    .container {
+        display: flex;
+        flex-direction: column;
+        max-width: 1800px;
+        margin: 0 auto;
+        padding: 20px;
+        gap: 20px;
+    }
+
+    .graph-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px;
+        background-color: var(--surface);
+        border-radius: 4px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        border: 1px solid var(--divider);
+    }
+
+    .graph-title {
+        font-size: 1.5rem;
+        font-weight: 500;
+        color: var(--primary);
+        margin: 0;
+    }
+
+    .resizer {
+        width: 10px;
+        background: var(--divider);
+        cursor: col-resize;
+        flex-shrink: 0;
+    }
+
+    .graph-container {
+        display: flex;
+        gap: 0; /* Убираем gap, так как resizer будет занимать место */
+        height: 70vh;
+    }
+
+    .graph-svg-container,
+    .graph-data-container {
+        flex: 1 1 0; /* Равное начальное распределение */
+    }
+
+    .graph-container {
+        display: flex;
+        gap: 20px;
+        height: 70vh;
+    }
+
+    .graph-svg-container {
+        flex: 3;
+        background-color: var(--surface);
+        border-radius: 4px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        overflow: auto;
+        border: 1px solid var(--divider);
+        padding: 16px;
+        height: 100%;
+    }
+
+    .graph-data-container {
+        flex: 2;
+        background-color: var(--surface);
+        border-radius: 4px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        padding: 16px;
+        border: 1px solid var(--divider);
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+    }
+
+    .data-section-title {
+        font-size: 1.25rem;
+        font-weight: 500;
+        margin: 0 0 16px 0;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--divider);
+        color: var(--primary);
+    }
+
+    .execution-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        background-color: var(--surface);
+        border-radius: 4px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        padding: 16px;
+        border: 1px solid var(--divider);
+    }
+
+    .controls-row {
+        display: flex;
+        gap: 12px;
+    }
+
+    .execution-summary {
+        background-color: var(--surface);
+        border-radius: 4px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        padding: 16px;
+        border: 1px solid var(--divider);
+    }
+
+    .execution-summary-text {
+        margin: 0 0 12px 0;
+        color: var(--text-secondary);
+    }
+
+    .execution-summary-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .execution-summary-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: #eef4f8;
+        color: var(--primary);
+        font-size: 0.8rem;
+        font-weight: 500;
+    }
+
+    .execution-summary-badge.prefilled {
+        background: #edf7ed;
+        color: #2f7d32;
+    }
+
+    .execution-input-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 12px;
+    }
+
+    .execution-input-section {
+        border: 1px solid var(--divider);
+        border-radius: 4px;
+        padding: 12px;
+        background: #fafafa;
+    }
+
+    .execution-input-section-title-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+
+    .execution-input-section-title {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+    }
+
+    .execution-initial-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: #eef4ff;
+        color: var(--secondary);
+        font-size: 0.72rem;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    .execution-input-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 10px;
+    }
+
+    .execution-input-field label {
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: var(--text-primary);
+    }
+
+    .execution-input-field input,
+    .execution-input-field select {
+        border: 1px solid var(--divider);
+        border-radius: 4px;
+        padding: 6px 8px;
+        background: #fff;
+        color: var(--text-primary);
+    }
+
+    .execution-input-hint {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+    }
+
+    .execution-input-initial {
+        font-size: 0.75rem;
+        color: var(--secondary);
+        background: #f1f6fb;
+        border: 1px solid #d8e6f0;
+        border-radius: 4px;
+        padding: 6px 8px;
+    }
+
+    .execution-input-error {
+        background-color: #ffe9e9;
+        border: 1px solid #ef9a9a;
+        border-radius: 4px;
+        color: #b71c1c;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+    }
+
+    .execution-modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.45);
+        display: none;
+        z-index: 1200;
+    }
+
+    .execution-modal-backdrop.show {
+        display: block;
+    }
+
+    .execution-modal {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: min(820px, calc(100vw - 32px));
+        max-height: calc(100vh - 48px);
+        overflow: auto;
+        padding: 20px;
+        border-radius: 8px;
+        background: var(--surface);
+        border: 1px solid var(--divider);
+        box-shadow: 0 20px 45px rgba(15, 23, 42, 0.22);
+        display: none;
+        z-index: 1201;
+    }
+
+    .execution-modal.show {
+        display: block;
+    }
+
+    .execution-modal-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 16px;
+    }
+
+    .execution-modal-title {
+        margin: 0;
+        color: var(--primary);
+        font-size: 1.2rem;
+    }
+
+    .execution-modal-subtitle {
+        margin: 6px 0 0 0;
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+    }
+
+    .execution-modal-close {
+        border: 0;
+        background: transparent;
+        color: var(--text-secondary);
+        cursor: pointer;
+        font-size: 1.4rem;
+        line-height: 1;
+        padding: 0;
+    }
+
+    .execution-modal-error {
+        margin-top: 14px;
+        background-color: #ffe9e9;
+        border: 1px solid #ef9a9a;
+        border-radius: 4px;
+        color: #b71c1c;
+        padding: 10px 12px;
+    }
+
+    .execution-modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        margin-top: 18px;
+    }
+
+    .mui-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        box-sizing: border-box;
+        background-color: transparent;
+        outline: 0;
+        border: 0;
+        margin: 0;
+        cursor: pointer;
+        user-select: none;
+        vertical-align: middle;
+        text-decoration: none;
+        font-weight: 500;
+        font-size: 0.875rem;
+        line-height: 1.75;
+        letter-spacing: 0.02857em;
+        text-transform: uppercase;
+        min-width: 64px;
+        padding: 6px 16px;
+        border-radius: 4px;
+        transition: all 0.2s ease;
+    }
+
+    .mui-button.primary {
+        color: #fff;
+        background-color: var(--primary);
+    }
+
+    .mui-button.primary:hover {
+        background-color: var(--primary-light);
+    }
+
+    .mui-button.secondary {
+        color: #fff;
+        background-color: var(--secondary);
+    }
+
+    .mui-button:disabled {
+        color: rgba(0, 0, 0, 0.26);
+        background-color: rgba(0, 0, 0, 0.12);
+        cursor: default;
+        pointer-events: none;
+    }
+
+    .progress-container {
+        width: 100%;
+        height: 8px;
+        background-color: rgba(0, 0, 0, 0.08);
+        border-radius: 4px;
+        overflow: hidden;
+    }
+
+    .progress-bar {
+        height: 100%;
+        background-color: var(--primary);
+        border-radius: 4px;
+        transition: width 0.3s ease;
+    }
+
+    .states-table-container {
+        flex: 1;
+        overflow-y: auto;
+        border: 1px solid var(--divider);
+        border-radius: 4px;
+    }
+
+    .states-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+    }
+
+    .states-table th {
+        text-align: left;
+        padding: 10px 12px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        border-bottom: 1px solid var(--divider);
+        background-color: #f5f5f5;
+        position: sticky;
+        top: 0;
+    }
+
+    .states-table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--divider);
+    }
+
+    .states-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    .states-table tr.highlighted {
+        background-color: rgba(65, 118, 144, 0.1);
+        border-left: 3px solid var(--primary);
+    }
+
+    /* SVG Styles */
+
+    .state-active > polygon,
+    .state-active > ellipse,
+    .state-active > rect,
+    .state-active > path {
+        stroke: #ff5722;
+        stroke-width: 3px;
+        filter: drop-shadow(0 0 4px rgba(255, 87, 34, 0.8));
+    }
+
+    .state-active > text {
+        font-weight: bold;
+        fill: #ff5722;
+    }
+
+    .graphviz {
+        width: 100%;
+        height: 100%;
+    }
+
+    --
+
+
+    /* Модальное окно для подграфов */
+
+
+    .modal-backdrop {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 9999;
+    }
+
+    .subgraph-modal {
+        display: none;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 90%;
+        height: 90%;
+        background: white;
+        z-index: 10000;
+        border: 1px solid var(--divider);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        border-radius: 4px;
+        overflow: hidden;
+        flex-direction: column;
+    }
+
+    .modal-header {
+        padding: 15px 20px;
+        background-color: var(--primary);
+        color: white;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-shrink: 0;
+    }
+
+    .modal-title {
+        margin: 0;
+        font-size: 1.2rem;
+    }
+
+    .close-modal {
+        font-size: 1.5rem;
+        cursor: pointer;
+        background: none;
+        border: none;
+        color: white;
+    }
+
+    .modal-content {
+        padding: 20px;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .resizable-container {
+        display: flex;
+        flex: 1;
+        overflow: hidden;
+        gap: 20px;
+    }
+
+    .resizable-panel {
+        overflow: auto;
+        position: relative;
+    }
+
+    .resizable-left {
+        flex: 3;
+        border: 1px solid var(--divider);
+        border-radius: 4px;
+    }
+
+    .resizable-right {
+        flex: 2;
+        border: 1px solid var(--divider);
+        border-radius: 4px;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .resizer {
+        width: 10px;
+        background: var(--divider);
+        cursor: col-resize;
+        flex-shrink: 0;
+    }
+
+    .states-table-container {
+        flex: 1;
+        overflow-y: auto;
+        border: 1px solid var(--divider);
+        border-radius: 4px;
+    }
+
+    .states-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+    }
+
+    .states-table th {
+        text-align: left;
+        padding: 10px 12px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        border-bottom: 1px solid var(--divider);
+        background-color: #f5f5f5;
+        position: sticky;
+        top: 0;
+    }
+
+    .states-table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--divider);
+    }
+
+    .states-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    .states-table tr.highlighted {
+        background-color: rgba(65, 118, 144, 0.1);
+        border-left: 3px solid var(--primary);
+    }
+    .edge-highlight path {
+        stroke: #ff5722 !important;
+        stroke-width: 3px !important;
+        filter: drop-shadow(0 0 4px rgba(255, 87, 34, 0.8));
+    }
+    .edge-highlight polygon {
+        stroke: #ff5722 !important;
+        fill: #ff5722 !important;
+        filter: drop-shadow(0 0 4px rgba(255, 87, 34, 0.8));
+    }
+    .edge-highlight text {
+        fill: #ff5722 !important;
+        font-weight: bold !important;
+    }
+    /* Стили для новых стрелок переходов */
+    .transition-arrow {
+        stroke: #ff5722;
+        stroke-width: 3px;
+        fill: none;
+        marker-end: url(#arrowhead-transition);
+        filter: drop-shadow(0 0 4px rgba(255, 87, 34, 0.8));
+    }
+
+    .transition-label {
+        fill: #ff5722;
+        font-weight: bold;
+        font-size: 14px;
+        background-color: white;
+        padding: 2px 4px;
+        border-radius: 3px;
+    }
+    .edge-highlight path {
+        stroke: #ff5722 !important;
+        stroke-width: 3px !important;
+        filter: drop-shadow(0 0 4px rgba(255, 87, 34, 0.8));
+    }
+
+    .edge-highlight polygon {
+        stroke: #ff5722 !important;
+        fill: #ff5722 !important;
+        filter: drop-shadow(0 0 4px rgba(255, 87, 34, 0.8));
+    }
+
+    .edge-highlight text {
+        fill: #ff5722 !important;
+        font-weight: bold !important;
+    }
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    {% if is_main_graph %}
+    <div class="graph-header">
+        <h1 class="graph-title">{{ graph.name }}</h1>
+        <a href="{% url 'admin:comwpc_graph_change' graph.id %}" class="mui-button secondary">
+            <i class="fas fa-edit"></i> Вернуться к редактированию
+        </a>
+    </div>
+    {% endif %}
+
+    {% if is_main_graph %}
+    <div class="execution-controls">
+        <div class="controls-row">
+            <button id="btn-start" class="mui-button primary">
+                <i class="fas fa-play"></i> Запустить
+            </button>
+            <button id="btn-pause" class="mui-button" disabled>
+                <i class="fas fa-pause"></i> Пауза
+            </button>
+        </div>
+        <div class="progress-container">
+            <div id="execution-progress" class="progress-bar" style="width: 0%"></div>
+        </div>
+    </div>
+
+    {% if execution_input_error %}
+    <div class="execution-input-error">
+        Ошибка разбора aINI: {{ execution_input_error }}
+    </div>
+    {% endif %}
+
+    {% if execution_input_schema.fields %}
+    <div class="execution-summary">
+        <h2 class="data-section-title">Параметры запуска</h2>
+        <p class="execution-summary-text">
+            Поля из aINI запрашиваются перед запуском обхода. Начальные значения можно изменить перед стартом.
+        </p>
+        <div class="execution-summary-meta">
+            <span class="execution-summary-badge">
+                Полей: {{ execution_input_schema.fields|length }}
+            </span>
+            {% if execution_input_schema.prefilled_count %}
+            <span class="execution-summary-badge prefilled">
+                С начальными данными: {{ execution_input_schema.prefilled_count }}
+            </span>
+            {% endif %}
+        </div>
+    </div>
+
+    <div id="execution-start-backdrop" class="execution-modal-backdrop"></div>
+    <div id="execution-start-modal" class="execution-modal" aria-hidden="true">
+        <div class="execution-modal-header">
+            <div>
+                <h2 id="execution-start-modal-title" class="execution-modal-title">Параметры запуска</h2>
+                <p class="execution-modal-subtitle">
+                    Проверьте значения перед началом обхода. Поля с меткой aINI уже имеют начальные данные.
+                </p>
+            </div>
+            <button type="button" id="btn-start-close" class="execution-modal-close" aria-label="Закрыть">&times;</button>
+        </div>
+        <div id="execution-input-form" class="execution-input-grid"></div>
+        <div id="execution-input-modal-error" class="execution-modal-error" hidden></div>
+        <div class="execution-modal-actions">
+            <button type="button" id="btn-start-cancel" class="mui-button">Отмена</button>
+            <button type="button" id="btn-start-confirm" class="mui-button primary">
+                <i class="fas fa-play"></i> Запустить обход
+            </button>
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
+
+    {% if is_main_graph %}
+    <div class="graph-container">
+        <div class="graph-svg-container">
+            {{ svg_content|safe }}
+        </div>
+        <div class="resizer" id="main-resizer"></div>
+        <div class="graph-data-container">
+            <h2 class="data-section-title">История выполнения</h2>
+            <div class="states-table-container">
+                <table class="states-table" id="states-table">
+                    <thead>
+                        <tr>
+                            <th>Граф</th>
+                            <th>Состояние</th>
+                            <th>Данные</th>
+                        </tr>
+                    </thead>
+                    <tbody id="states-body">
+                        <!-- Will be populated by JavaScript -->
+                    </tbody>
+                </table>
+
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Модальное окно для подграфов -->
+<div id="subgraph-modal" class="subgraph-modal">
+    <div class="modal-header">
+        <h3 class="modal-title">Подграф</h3>
+        <button class="close-modal" onclick="closeSubgraph()">&times;</button>
+    </div>
+    <div class="modal-content" id="subgraph-content">
+        <div class="resizable-container">
+            <div class="resizable-panel resizable-left" id="subgraph-svg-container">
+                <!-- SVG будет загружено сюда -->
+            </div>
+            <div class="resizer" id="subgraph-resizer"></div>
+            <div class="resizable-panel resizable-right">
+                <h2 class="data-section-title">История выполнения</h2>
+                <div class="states-table-container">
+                    <table class="states-table">
+                        <thead>
+                            <tr>
+                                <th>Граф</th>
+                                <th>Состояние</th>
+                                <th>Данные</th>
+                            </tr>
+                        </thead>
+                        <tbody id="subgraph-states-body">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="modal-backdrop" class="modal-backdrop"></div>
+
+{% if is_main_graph %}
+{{ execution_input_schema|json_script:"execution-input-schema" }}
+{% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const sessionId = "{{ execution_session|default_if_none:'' }}";
+    const statesBody = document.getElementById('states-body');
+    let executionCompleted = false;
+    let currentGraphName = "{{ graph.name }}";
+    let currentSubgraph = null;
+    let subgraphEvents = {};
+    let allEvents = [];
+    let stateHistory = [];
+    let transitions = {};
+    const stateRowMap = new Map();
+    const subgraphStateRowMap = new Map();
+    const executionInputSchemaElement = document.getElementById('execution-input-schema');
+    const executionInputSchema = executionInputSchemaElement
+        ? JSON.parse(executionInputSchemaElement.textContent)
+        : { fields: [], prefilled_count: 0 };
+    const executionInputForm = document.getElementById('execution-input-form');
+    const executionStartModal = document.getElementById('execution-start-modal');
+    const executionStartBackdrop = document.getElementById('execution-start-backdrop');
+    const executionInputModalError = document.getElementById('execution-input-modal-error');
+
+    renderExecutionInputFields();
+
+    class FilteredEventSource {
+        constructor(url) {
+            this.url = url;
+            this.filters = [];
+            this.listeners = [];
+            this.source = new EventSource(url);
+            this.source.onmessage = this.handleMessage.bind(this);
+        }
+
+
+        addFilter(filterFn) {
+            this.filters.push(filterFn);
+        }
+
+        addListener(listener) {
+            this.listeners.push(listener);
+        }
+
+        handleMessage(event) {
+            const data = JSON.parse(event.data);
+            // Применяем все фильтры
+            if (this.filters.some(filter => filter(data))) {
+                this.listeners.forEach(listener => listener(data));
+            }
+        }
+    }
+
+    let eventSource = null;
+    if (sessionId) {
+        eventSource = new FilteredEventSource(`/execution/events/${sessionId}/`);
+
+        eventSource.addFilter(event => true);eventSource.addFilter(event => true);
+
+        eventSource.addListener(function(data) {
+            try {
+                console.log("Received event:", data);
+
+                // Сохраняем событие
+                allEvents.push(data);
+
+                if (data.progress) {
+                    document.getElementById('execution-progress').style.width = `${data.progress}%`;
+                }
+
+                // Полностью игнорируем служебные узлы в основном потоке событий
+                if (data.state && (data.state === '__BEGIN__' || data.state === '__END__')) {
+                    // Для __END__ вызываем завершение выполнения
+                    if (data.state === '__END__' && data.event === 'state_enter') {
+                        handleExecutionComplete(data);
+                    }
+                    return;
+                }
+
+                // Обработка основного графа
+                if (data.graph_id === currentGraphName) {
+                    switch(data.event) {
+                        case 'state_enter':
+                            if (data.state) {
+                                addStateToTable(data.state, data.data, data.timestamp, data.graph_id);
+                                highlightState(data.state, true);
+                            }
+                            break;
+                        case 'state_exit':
+                            if (data.state) {
+                                highlightState(data.state, false);
+                            }
+                            break;
+                        case 'complete':
+                            handleExecutionComplete(data);
+                            break;
+                    }
+                }
+
+                // Обработка подграфа
+                if (currentSubgraph && data.state) {
+                    // Проверяем по регулярному выражению
+                    if (currentSubgraph.prefixRegex && currentSubgraph.prefixRegex.test(data.state)) {
+                        const pureStateName = data.state.replace(currentSubgraph.prefixRegex, '');
+
+                        switch(data.event) {
+                            case 'state_enter':
+                                addStateToSubgraphTable(pureStateName, data.data, data.timestamp);
+                                highlightStateInSubgraph(pureStateName, true);
+                                break;
+                            case 'state_exit':
+                                highlightStateInSubgraph(pureStateName, false);
+                                break;
+                        }
+                    }
+                }
+
+                if (data.event === 'state_enter') {
+                    if (data.state) {
+                        // Добавляем состояние в историю
+                        stateHistory.push({
+                            state: data.state,
+                            graph: data.graph_id,
+                            timestamp: data.timestamp
+                        });
+
+                        addStateToTable(data.state, data.data, data.timestamp, data.graph_id);
+                        highlightState(data.state, true);
+
+                        // Если в истории больше одного состояния, подсвечиваем переход
+                        if (stateHistory.length > 1) {
+                            const previousState = stateHistory[stateHistory.length - 2];
+                            const currentState = stateHistory[stateHistory.length - 1];
+
+                            if (previousState.graph === currentState.graph) {
+                                // Получаем комментарий перехода из заранее загруженных данных
+                                const transitionKey = `${previousState.state}-${currentState.state}`;
+                                const transitionComment = transitions[transitionKey] || "Transition";
+
+                                highlightTransition(previousState.state, currentState.state, true, transitionComment);
+
+                                setTimeout(() => {
+                                    highlightTransition(previousState.state, currentState.state, false);
+                                }, 2000);
+                            }
+                        }
+                    }
+                }
+                if (data.event === 'state_exit') {
+                    if (data.state) {
+                        highlightState(data.state, false);
+                    }
+                }
+
+            } catch (error) {
+                console.error("Error processing event:", error);
+            }
+        });
+
+        function processSubgraphEvent(eventData) {
+            switch(eventData.event) {
+                case 'state_enter':
+                    addStateToSubgraphTable(eventData.state, eventData.data, eventData.timestamp);
+                    highlightStateInSubgraph(eventData.state, true);
+                    break;
+                case 'state_exit':
+                    highlightStateInSubgraph(eventData.state, false);
+                    break;
+            }
+        }
+    }
+
+    function loadTransitions(graphId) {
+        fetch(`/api/transitions/${graphId}/`)
+            .then(response => response.json())
+            .then(data => {
+                transitions = data;
+            })
+            .catch(error => {
+                console.error("Error loading transitions:", error);
+            });
+    }
+
+    function initMainResizer() {
+        const resizer = document.getElementById('main-resizer');
+        const leftPanel = document.querySelector('.graph-svg-container');
+        const rightPanel = document.querySelector('.graph-data-container');
+
+        let isResizing = false;
+
+        resizer.addEventListener('mousedown', function(e) {
+            isResizing = true;
+            document.body.style.cursor = 'col-resize';
+            leftPanel.style.userSelect = 'none';
+            leftPanel.style.pointerEvents = 'none';
+            rightPanel.style.userSelect = 'none';
+            rightPanel.style.pointerEvents = 'none';
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (!isResizing) return;
+
+            const containerRect = document.querySelector('.graph-container').getBoundingClientRect();
+            const xPosition = e.clientX - containerRect.left;
+
+            // Вычисляем новые размеры в процентах
+            const leftWidth = (xPosition / containerRect.width) * 100;
+            const rightWidth = 100 - leftWidth - (10 / containerRect.width) * 100; // 10px - ширина resizer
+
+            leftPanel.style.flex = `${leftWidth} 1 0`;
+            rightPanel.style.flex = `${rightWidth} 1 0`;
+        });
+
+        document.addEventListener('mouseup', function() {
+            isResizing = false;
+            document.body.style.cursor = '';
+            leftPanel.style.userSelect = '';
+            leftPanel.style.pointerEvents = '';
+            rightPanel.style.userSelect = '';
+            rightPanel.style.pointerEvents = '';
+        });
+    }
+
+    // Инициализируем основной resizer
+    initMainResizer();
+
+    function highlightStateInSubgraph(stateName, isActive) {
+        const modalContent = document.getElementById('subgraph-content');
+        if (!modalContent) return;
+
+        // Сброс подсветки
+        modalContent.querySelectorAll('.state-active').forEach(el => {
+            el.classList.remove('state-active');
+        });
+
+        if (isActive) {
+            // Пытаемся найти по чистому имени
+            let nodes = modalContent.querySelectorAll(`[data-name="${stateName}"]`);
+
+            // Если не найдено, пробуем варианты с подчеркиваниями
+            if (nodes.length === 0) {
+                nodes = modalContent.querySelectorAll(`[data-name^="_${stateName}"]`);
+            }
+            if (nodes.length === 0) {
+                nodes = modalContent.querySelectorAll(`[data-name$="${stateName}"]`);
+            }
+            if (nodes.length === 0 && currentSubgraph.statePrefix) {
+                // Пробуем полное имя
+                const fullName = currentSubgraph.statePrefix + stateName;
+                nodes = modalContent.querySelectorAll(`[data-name="${fullName}"]`);
+            }
+
+            // Применяем подсветку
+            if (nodes.length > 0) {
+                nodes.forEach(node => {
+                    node.classList.add('state-active');
+                });
+            }
+        }
+    }
+
+    function addStateToTable(state, data, eventTime, graphId) {
+        // Пропускаем служебные узлы __BEGIN__ и __END__
+        if (state === '__BEGIN__' || state === '__END__') {
+            return null;
+        }
+
+        // Проверяем, нет ли уже такого состояния в таблице
+        const existingRow = document.querySelector(
+            `#states-body tr[data-state="${state}"][data-time="${eventTime}"][data-graph="${graphId}"]`
+        );
+        if (existingRow) {
+            return existingRow;
+        }
+
+        const row = document.createElement('tr');
+        row.dataset.state = state;
+        row.dataset.time = eventTime;
+        row.dataset.graph = graphId;
+
+        const graphCell = document.createElement('td');
+        graphCell.textContent = graphId;
+
+        const stateCell = document.createElement('td');
+        stateCell.textContent = state;
+        stateCell.style.fontWeight = '500';
+
+        const dataCell = document.createElement('td');
+        dataCell.textContent = formatDataForDisplay(data);
+
+        row.appendChild(graphCell);
+        row.appendChild(stateCell);
+        row.appendChild(dataCell);
+        statesBody.appendChild(row);
+
+        // Сохраняем связь состояния с элементом строки
+        stateRowMap.set(state, row);
+
+        // Добавляем обработчик для строки таблицы
+        row.addEventListener('click', () => {
+            highlightState(state, true);
+            centerNodeInView(state);
+        });
+
+        // Прокрутка к последнему элементу
+        row.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+        return row;
+    }
+
+
+    // Функция добавления состояния в таблицу подграфа
+    // Функция добавления состояния в таблицу подграфа
+    function addStateToSubgraphTable(stateName, data, eventTime, graphName) {
+        // Пропускаем служебные узлы в подграфах
+        if (stateName === '__BEGIN__' || stateName === '__END__') {
+            return;
+        }
+
+        const tableBody = document.querySelector('#subgraph-states-body');
+        if (!tableBody) return;
+
+        const row = document.createElement('tr');
+        row.dataset.state = stateName;
+        row.dataset.time = eventTime;
+
+        // Добавляем ячейку для имени графа
+        const graphCell = document.createElement('td');
+        graphCell.textContent = graphName || currentSubgraph.baseName;
+
+        const stateCell = document.createElement('td');
+        stateCell.textContent = stateName;
+        stateCell.style.fontWeight = '500';
+
+        const dataCell = document.createElement('td');
+        dataCell.textContent = formatDataForDisplay(data);
+
+        row.appendChild(graphCell);
+        row.appendChild(stateCell);
+        row.appendChild(dataCell);
+        tableBody.appendChild(row);
+
+        // Добавляем обработчик клика
+        row.addEventListener('click', () => {
+            highlightStateInSubgraph(stateName, true);
+            centerNodeInSubgraphView(stateName);
+        });
+
+        row.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+    }
+
+    function initEdgeAttributes(container) {
+        const nodeIdToName = {};
+        console.log("=== INIT EDGE ATTRIBUTES ===");
+
+        // Собираем mapping id узла -> имя состояния
+        container.querySelectorAll('.node').forEach(node => {
+            const title = node.querySelector('title');
+            if (title) {
+                const nodeId = title.textContent;
+                const stateName = node.getAttribute('data-name') ||
+                                 node.querySelector('text')?.textContent ||
+                                 nodeId;
+                nodeIdToName[nodeId] = stateName;
+                console.log(`Node mapping: ${nodeId} -> ${stateName}`);
+            }
+        });
+
+        // Обрабатываем ребра
+        container.querySelectorAll('g.edge').forEach(edge => {
+            const title = edge.querySelector('title');
+            if (title) {
+                const text = title.textContent;
+                console.log(`Edge title: ${text}`);
+
+                const match = text.match(/(\d+)->(\d+)/);
+                if (match) {
+                    const sourceId = match[1];
+                    const targetId = match[2];
+                    const sourceName = nodeIdToName[sourceId] || sourceId;
+                    const targetName = nodeIdToName[targetId] || targetId;
+
+                    edge.dataset.source = sourceName;
+                    edge.dataset.target = targetName;
+                    console.log(`Edge mapped to: ${sourceName} -> ${targetName}`);
+                }
+            }
+        });
+        console.log("=== END INIT EDGE ATTRIBUTES ===");
+    }
+
+
+    function debugEdgeInfo() {
+        console.log("=== EDGE DEBUG INFO ===");
+        const edges = document.querySelectorAll('g.edge');
+        edges.forEach(edge => {
+            const title = edge.querySelector('title');
+            console.log(`Edge ID: ${edge.id}, Title: ${title?.textContent}`);
+            console.log(`  Data source: ${edge.dataset.source}`);
+            console.log(`  Data target: ${edge.dataset.target}`);
+
+            // Проверим родительский элемент и его структуру
+            console.log(`  Parent: ${edge.parentElement?.tagName}`);
+        });
+        console.log("=== END EDGE DEBUG ===");
+    }
+
+    // Инициализация атрибутов после загрузки SVG
+    const svgContainer = document.querySelector('.graph-svg-container');
+    if (svgContainer) {
+        // Ждем немного для полной загрузки SVG
+        setTimeout(() => {
+            initEdgeAttributes(svgContainer);
+            debugEdgeInfo(); // Добавляем отладочную информацию
+
+        }, 500); // Увеличиваем задержку для полной загрузки SVG
+    }
+    //----
+    function addArrowMarker(svgElement) {
+        const defs = svgElement.querySelector('defs') || document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+        if (!svgElement.querySelector('defs')) {
+            svgElement.insertBefore(defs, svgElement.firstChild);
+        }
+
+        // Проверяем, есть ли уже наш маркер
+        if (!svgElement.querySelector('#arrowhead-transition')) {
+            const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+            marker.setAttribute('id', 'arrowhead-transition');
+            marker.setAttribute('markerWidth', '10');
+            marker.setAttribute('markerHeight', '7');
+            marker.setAttribute('refX', '9');
+            marker.setAttribute('refY', '3.5');
+            marker.setAttribute('orient', 'auto');
+
+            const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+            polygon.setAttribute('points', '0 0, 10 3.5, 0 7');
+            polygon.setAttribute('fill', '#ff5722');
+
+            marker.appendChild(polygon);
+            defs.appendChild(marker);
+        }
+    }
+
+    // Функция для создания новой стрелки перехода
+    function createTransitionArrow(fromState, toState, label) {
+        const svgElement = document.querySelector('svg');
+        addArrowMarker(svgElement);
+
+        // Находим позиции узлов
+        const fromNode = document.querySelector(`[data-name="${fromState}"]`);
+        const toNode = document.querySelector(`[data-name="${toState}"]`);
+
+        if (!fromNode || !toNode) {
+            console.error(`Nodes not found for transition: ${fromState} -> ${toState}`);
+            return null;
+        }
+
+        // Получаем координаты центров узлов
+        const fromRect = fromNode.getBoundingClientRect();
+        const toRect = toNode.getBoundingClientRect();
+        const svgRect = svgElement.getBoundingClientRect();
+
+        const fromCenter = {
+            x: fromRect.left + fromRect.width/2 - svgRect.left,
+            y: fromRect.top + fromRect.height/2 - svgRect.top
+        };
+
+        const toCenter = {
+            x: toRect.left + toRect.width/2 - svgRect.left,
+            y: toRect.top + toRect.height/2 - svgRect.top
+        };
+
+        // Создаем путь для стрелки
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('class', 'transition-arrow');
+
+        // Рассчитываем контрольные точки для изогнутой линии
+        const dx = toCenter.x - fromCenter.x;
+        const dy = toCenter.y - fromCenter.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        // Создаем изогнутую линию
+        const controlPointX = (fromCenter.x + toCenter.x) / 2 + dy / 3;
+        const controlPointY = (fromCenter.y + toCenter.y) / 2 - dx / 3;
+
+        path.setAttribute('d', `M${fromCenter.x},${fromCenter.y} Q${controlPointX},${controlPointY} ${toCenter.x},${toCenter.y}`);
+
+        // Добавляем метку с названием перехода
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('class', 'transition-label');
+        text.setAttribute('x', controlPointX);
+        text.setAttribute('y', controlPointY - 10);
+        text.setAttribute('text-anchor', 'middle');
+        text.textContent = label || 'transition';
+
+        // Создаем группу для элементов перехода
+        const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        group.setAttribute('class', 'dynamic-transition');
+        group.setAttribute('data-from', fromState);
+        group.setAttribute('data-to', toState);
+        group.appendChild(path);
+        group.appendChild(text);
+
+        // Добавляем группу в SVG
+        svgElement.appendChild(group);
+
+        return group;
+    }
+
+    // Функция для удаления всех динамических стрелок
+    function removeAllTransitionArrows() {
+        document.querySelectorAll('.dynamic-transition').forEach(el => el.remove());
+    }
+
+    // Модифицированная функция highlightTransition
+    //function highlightTransition(fromState, toState, isActive, edgeComment) {
+    //    // Сначала удаляем все существующие стрелки
+    //    removeAllTransitionArrows();
+//
+    //    if (isActive) {
+    //        // Создаем новую стрелку для этого перехода
+    //        createTransitionArrow(fromState, toState, edgeComment);
+//
+    //        // Добавляем таймер для автоматического удаления через 2 секунды
+    //        setTimeout(() => {
+    //            removeAllTransitionArrows();
+    //        }, 2000);
+    //    }
+    //}
+    //----
+
+
+    //function highlightTransition(fromState, toState, isActive, edgeComment) {
+    //    const edges = document.querySelectorAll('g.edge');
+    //    let edgeFound = false;
+//
+    //    edges.forEach(edge => {
+    //        if (edge.dataset.source === fromState && edge.dataset.target === toState) {
+    //            if (isActive) {
+    //                edge.classList.add('edge-highlight');
+    //            } else {
+    //                edge.classList.remove('edge-highlight');
+    //            }
+    //            edgeFound = true;
+    //        }
+    //    });
+//
+    //    if (!edgeFound) {
+    //        console.log(`Edge from ${fromState} to ${toState} not found`);
+    //    }
+    //}
+
+    function highlightTransition(fromState, toState, isActive, edgeComment) {
+        console.log(`Trying to highlight edge: ${fromState} -> ${toState}`);
+
+        const edges = document.querySelectorAll('g.edge');
+        let edgeFound = false;
+
+        edges.forEach(edge => {
+            const edgeSource = edge.dataset.source;
+            const edgeTarget = edge.dataset.target;
+
+            if ((edgeSource === fromState && edgeTarget === toState) ||
+                (edgeSource === `_${fromState}` && edgeTarget === `_${toState}`) ||
+                (edgeSource === `${fromState}_` && edgeTarget === `${toState}_`)) {
+
+                if (isActive) {
+                    edge.classList.add('edge-highlight');
+                    // Автоматическое удаление подсветки через 2 секунды
+                    setTimeout(() => {
+                        edge.classList.remove('edge-highlight');
+                    }, 2000);
+                } else {
+                    edge.classList.remove('edge-highlight');
+                }
+                edgeFound = true;
+                console.log(`Edge found and highlighted: ${edgeSource} -> ${edgeTarget}`);
+            }
+        });
+
+        if (!edgeFound) {
+            console.log(`Edge from ${fromState} to ${toState} not found`);
+            // Дополнительная отладка
+            console.log("Available edges:");
+            document.querySelectorAll('g.edge').forEach(e => {
+                console.log(`Edge: ${e.dataset.source} -> ${e.dataset.target}`);
+            });
+        }
+    }
+
+    function highlightStateInSubgraph(stateName, isActive) {
+        const modalContent = document.getElementById('subgraph-content');
+        if (!modalContent) return;
+
+        // Сброс подсветки
+        modalContent.querySelectorAll('.state-active').forEach(el => {
+            el.classList.remove('state-active');
+        });
+
+        if (isActive) {
+            // Варианты имен для поиска
+            const possibleNames = [
+                stateName,
+                `_${stateName}`,
+                `${stateName}_`,
+                `_${stateName}_`,
+                `${currentSubgraph.statePrefix}${stateName}`
+            ];
+
+            let nodes = null;
+
+            // Поиск по всем возможным вариантам
+            for (const name of possibleNames) {
+                nodes = modalContent.querySelectorAll(`[data-name="${name}"]`);
+                if (nodes.length > 0) break;
+            }
+
+            // Применяем подсветку
+            if (nodes && nodes.length > 0) {
+                nodes.forEach(node => {
+                    node.classList.add('state-active');
+                });
+            }
+        }
+    }
+
+    function centerNodeInSubgraphView(stateName) {
+        const modalContent = document.getElementById('subgraph-content');
+        if (!modalContent) return;
+
+        const svgContainer = modalContent.querySelector('.graph-svg-container');
+        if (!svgContainer) return;
+
+        // Варианты имен для поиска
+        const possibleNames = [
+            stateName,
+            `_${stateName}`,
+            `${stateName}_`,
+            `_${stateName}_`,
+            `${currentSubgraph.statePrefix}${stateName}`
+        ];
+
+        let node = null;
+
+        // Поиск по всем возможным вариантам
+        for (const name of possibleNames) {
+            node = modalContent.querySelector(`[data-name="${name}"]`);
+            if (node) break;
+        }
+
+        if (node) {
+            const svgContainer = modalContent.querySelector('.graph-svg-container');
+            const nodeRect = node.getBoundingClientRect();
+            const containerRect = svgContainer.getBoundingClientRect();
+
+            const centerX = nodeRect.left - containerRect.left + nodeRect.width/2 - containerRect.width/2;
+            const centerY = nodeRect.top - containerRect.top + nodeRect.height/2 - containerRect.height/2;
+
+            svgContainer.scrollTo({
+                top: centerY,
+                left: centerX,
+                behavior: 'smooth'
+            });
+        }
+    }
+
+    // Функция для форматирования данных
+    function formatDataForDisplay(data) {
+        if (!data) return 'Нет данных';
+
+        // Убираем системные поля
+        const filteredData = {};
+        for (const key in data) {
+            if (!key.startsWith('__')) {
+                filteredData[key] = data[key];
+            }
+        }
+
+        if (Object.keys(filteredData).length === 0) return 'Нет данных';
+
+        return JSON.stringify(filteredData, null, 2);
+    }
+
+    function setExecutionInputModalError(message) {
+        if (!executionInputModalError) {
+            return;
+        }
+
+        if (!message) {
+            executionInputModalError.hidden = true;
+            executionInputModalError.textContent = '';
+            return;
+        }
+
+        executionInputModalError.hidden = false;
+        executionInputModalError.textContent = message;
+    }
+
+    function openExecutionStartModal() {
+        if (!executionStartModal || !executionStartBackdrop) {
+            return;
+        }
+
+        setExecutionInputModalError('');
+        executionStartModal.classList.add('show');
+        executionStartBackdrop.classList.add('show');
+        executionStartModal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeExecutionStartModal() {
+        if (!executionStartModal || !executionStartBackdrop) {
+            return;
+        }
+
+        executionStartModal.classList.remove('show');
+        executionStartBackdrop.classList.remove('show');
+        executionStartModal.setAttribute('aria-hidden', 'true');
+        setExecutionInputModalError('');
+    }
+
+    function renderExecutionInputFields() {
+        if (!executionInputForm || !executionInputSchema.fields || executionInputSchema.fields.length === 0) {
+            return;
+        }
+
+        executionInputForm.innerHTML = '';
+        const sections = {};
+
+        executionInputSchema.fields.forEach(field => {
+            if (!sections[field.section]) {
+                sections[field.section] = [];
+            }
+            sections[field.section].push(field);
+        });
+
+        Object.entries(sections).forEach(([sectionName, fields]) => {
+            const sectionEl = document.createElement('div');
+            sectionEl.className = 'execution-input-section';
+
+            const titleRowEl = document.createElement('div');
+            titleRowEl.className = 'execution-input-section-title-row';
+
+            const titleEl = document.createElement('div');
+            titleEl.className = 'execution-input-section-title';
+            titleEl.textContent = sectionName;
+            titleRowEl.appendChild(titleEl);
+
+            if (fields.some(field => field.has_initial_value)) {
+                const badgeEl = document.createElement('span');
+                badgeEl.className = 'execution-initial-badge';
+                badgeEl.textContent = 'Начальные данные aINI';
+                titleRowEl.appendChild(badgeEl);
+            }
+
+            sectionEl.appendChild(titleRowEl);
+
+            fields.forEach(field => {
+                const fieldEl = document.createElement('div');
+                fieldEl.className = 'execution-input-field';
+
+                const labelEl = document.createElement('label');
+                labelEl.textContent = `${field.label}${field.required ? ' *' : ''}`;
+                fieldEl.appendChild(labelEl);
+
+                let inputEl;
+                if (field.input_type === 'select') {
+                    inputEl = document.createElement('select');
+                    const emptyOption = document.createElement('option');
+                    emptyOption.value = '';
+                    emptyOption.textContent = '--';
+                    inputEl.appendChild(emptyOption);
+
+                    (field.options || []).forEach(optionValue => {
+                        const optionEl = document.createElement('option');
+                        optionEl.value = String(optionValue);
+                        optionEl.textContent = String(optionValue);
+                        inputEl.appendChild(optionEl);
+                    });
+                } else {
+                    inputEl = document.createElement('input');
+                    inputEl.type = field.input_type === 'number'
+                        ? 'number'
+                        : field.input_type === 'checkbox'
+                            ? 'checkbox'
+                            : 'text';
+                    if (field.input_type === 'number') {
+                        inputEl.step = field.step ?? 'any';
+                        if (field.min !== null && field.min !== undefined) {
+                            inputEl.min = String(field.min);
+                        }
+                        if (field.max !== null && field.max !== undefined) {
+                            inputEl.max = String(field.max);
+                        }
+                    }
+                }
+
+                inputEl.dataset.fieldName = field.name;
+                inputEl.required = !!field.required;
+                if (field.input_type === 'checkbox') {
+                    inputEl.checked = !!field.initial_value;
+                } else if (
+                    field.initial_value !== null &&
+                    field.initial_value !== undefined &&
+                    field.initial_value !== ''
+                ) {
+                    inputEl.value = String(field.initial_value);
+                } else if (
+                    field.sample !== null &&
+                    field.sample !== undefined &&
+                    field.sample !== ''
+                ) {
+                    inputEl.placeholder = String(field.sample);
+                }
+                fieldEl.appendChild(inputEl);
+
+                if (field.has_initial_value) {
+                    const initialEl = document.createElement('div');
+                    initialEl.className = 'execution-input-initial';
+                    initialEl.textContent = `Начальное значение: ${field.initial_value_label}`;
+                    fieldEl.appendChild(initialEl);
+                }
+
+                if (field.comment) {
+                    const hintEl = document.createElement('small');
+                    hintEl.className = 'execution-input-hint';
+                    hintEl.textContent = field.comment;
+                    fieldEl.appendChild(hintEl);
+                }
+
+                sectionEl.appendChild(fieldEl);
+            });
+
+            executionInputForm.appendChild(sectionEl);
+        });
+    }
+
+    function collectExecutionInputData() {
+        if (!executionInputForm || !executionInputSchema.fields || executionInputSchema.fields.length === 0) {
+            return { data: {} };
+        }
+
+        const data = {};
+        const missingRequired = [];
+
+        executionInputSchema.fields.forEach(field => {
+            const selector = `[data-field-name="${field.name}"]`;
+            const inputEl = executionInputForm.querySelector(selector);
+            if (!inputEl) {
+                return;
+            }
+
+            if (field.input_type === 'checkbox') {
+                data[field.name] = inputEl.checked;
+                return;
+            }
+
+            const rawValue = (inputEl.value || '').trim();
+            if (rawValue === '') {
+                if (field.required) {
+                    missingRequired.push(field.name);
+                }
+                return;
+            }
+
+            if (field.input_type === 'number') {
+                const numericValue = Number(rawValue);
+                if (Number.isNaN(numericValue)) {
+                    missingRequired.push(field.name);
+                    return;
+                }
+                data[field.name] = numericValue;
+                return;
+            }
+
+            data[field.name] = rawValue;
+        });
+
+        if (missingRequired.length > 0) {
+            return { error: `Не заполнены обязательные поля: ${missingRequired.join(', ')}` };
+        }
+
+        return { data };
+    }
+
+    function initResizer() {
+        const resizer = document.getElementById('subgraph-resizer');
+        const leftPanel = document.getElementById('subgraph-svg-container');
+        const rightPanel = document.querySelector('.resizable-right');
+
+        let isResizing = false;
+
+        resizer.addEventListener('mousedown', function(e) {
+            isResizing = true;
+            document.body.style.cursor = 'col-resize';
+            leftPanel.style.userSelect = 'none';
+            leftPanel.style.pointerEvents = 'none';
+            rightPanel.style.userSelect = 'none';
+            rightPanel.style.pointerEvents = 'none';
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (!isResizing) return;
+
+            const containerRect = leftPanel.parentElement.getBoundingClientRect();
+            const xPosition = e.clientX - containerRect.left;
+
+            const leftWidth = (xPosition / containerRect.width) * 100;
+            const rightWidth = 100 - leftWidth - (10 / containerRect.width) * 100;
+
+            leftPanel.style.flex = `${leftWidth} 1 0`;
+            rightPanel.style.flex = `${rightWidth} 1 0`;
+        });
+
+        document.addEventListener('mouseup', function() {
+            isResizing = false;
+            document.body.style.cursor = '';
+            leftPanel.style.userSelect = '';
+            leftPanel.style.pointerEvents = '';
+            rightPanel.style.userSelect = '';
+            rightPanel.style.pointerEvents = '';
+        });
+    }
+
+     window.openSubgraph = function(graphId, graphBaseName) {
+        console.log(`Opening subgraph: ${graphId} (base name: ${graphBaseName})`);
+        const modal = document.getElementById('subgraph-modal');
+        const modalContent = document.getElementById('subgraph-content'); // Определяем modalContent
+
+        // Создаем регулярное выражение для префикса
+        const escapedBaseName = graphBaseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const prefixRegex = new RegExp(`^${escapedBaseName}\\d+_`);
+
+        currentSubgraph = {
+            id: graphId,
+            baseName: graphBaseName,
+            prefixRegex: prefixRegex
+        };
+        const subgraphEvent = allEvents.find(e => e.state && prefixRegex.test(e.state));
+
+        if (subgraphEvent) {
+            const fullPrefix = subgraphEvent.state.match(prefixRegex)[0];
+            currentSubgraph = {
+                id: graphId,
+                baseName: graphBaseName,
+                statePrefix: fullPrefix
+            };
+        } else {
+            currentSubgraph = {
+                id: graphId,
+                baseName: graphBaseName,
+                statePrefix: null
+            };
+        }
+
+        // Проверяем, не открыт ли уже этот подграф
+        if (modal.dataset.currentGraph === String(graphId) && modal.style.display === 'block') {
+            return;
+        }
+
+        modal.dataset.currentGraph = graphId;
+        modalContent.innerHTML = '<div style="text-align: center; padding: 40px;"><i class="fas fa-spinner fa-spin"></i> Загрузка...</div>';
+        modal.style.display = 'block';
+        document.getElementById('modal-backdrop').style.display = 'block';
+
+        // Загружаем SVG асинхронно с включенными куками
+        fetch(`/graph-svg/${graphId}/`, {
+            credentials: 'include' // Важно для передачи сессии
+        })
+        .then(response => {
+            if (!response.ok) {
+                // Добавляем информацию о статусе ошибки
+                throw new Error(`Ошибка загрузки подграфа: ${response.status} ${response.statusText}`);
+            }
+            return response.text();
+        })
+        .then(svg => {
+            svg = svg.replace(/<g id="node/g, '<g class="node" id="node');
+            svg = svg.replace(/<g class="node terminal-node"/g, '<g class="terminal-node"');
+            svg = svg.replace(/<g class="node subgraph-node"/g, '<g class="subgraph-node"');
+
+            modalContent.innerHTML = `
+                <div class="resizable-container">
+                    <div class="resizable-panel resizable-left" id="subgraph-svg-container">
+                        ${svg}
+                    </div>
+                    <div class="resizer" id="subgraph-resizer"></div>
+                    <div class="resizable-panel resizable-right">
+                        <h2 class="data-section-title">История выполнения</h2>
+                        <div class="states-table-container">
+                            <table class="states-table">
+                                <thead>
+                                    <tr>
+                                        <th>Состояние</th>
+                                        <th>Данные</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="subgraph-states-body">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Инициализировать изменение размеров
+            initResizer();
+
+            initEdgeAttributes(modalContent); // Используем modalContent вместо content
+
+            setTimeout(() => {
+                const svgContainer = modalContent.querySelector('#subgraph-svg-container');
+                if (svgContainer) {
+                    const svgElement = svgContainer.querySelector('svg');
+                    if (svgElement) {
+                        const bbox = svgElement.getBBox();
+                        const width = svgElement.clientWidth;
+                        const height = svgElement.clientHeight;
+
+                        svgContainer.scrollTo({
+                            left: bbox.x + bbox.width/2 - width/2,
+                            top: bbox.y + bbox.height/2 - height/2,
+                            behavior: 'auto'
+                        });
+                    }
+                }
+            }, 300);
+
+            // Фильтрация событий для подграфа
+            const subgraphEvents = currentSubgraph.statePrefix
+                ? allEvents.filter(e => e.state?.startsWith(currentSubgraph.statePrefix))
+                : allEvents.filter(e => e.state && prefixRegex.test(e.state));
+
+            console.log(`Adding ${subgraphEvents.length} subgraph events to table`);
+            subgraphEvents.forEach(event => {
+                if (event.event === 'state_enter') {
+                    let pureStateName = event.state;
+                    if (currentSubgraph.statePrefix) {
+                        pureStateName = event.state.substring(currentSubgraph.statePrefix.length);
+                    }
+                    addStateToSubgraphTable(pureStateName, event.data, event.timestamp);
+                }
+            });
+            initEdgeAttributes(modalContent); // Используем modalContent вместо content
+        })
+        .catch(error => {
+            console.error("Ошибка загрузки подграфа:", error);
+            modalContent.innerHTML = `
+                <div style="text-align: center; padding: 40px; color: var(--error);">
+                    <i class="fas fa-exclamation-triangle"></i> ${error.message}
+                </div>
+            `;
+        });
+    };
+
+    document.addEventListener('DOMContentLoaded', function() {
+        initEdgeAttributes(document);
+    });
+
+    initEdgeAttributes(document);
+
+    window.closeSubgraph = function() {
+        document.getElementById('subgraph-modal').style.display = 'none';
+        document.getElementById('modal-backdrop').style.display = 'none';
+    };
+
+    // Функция для обработки завершения выполнения
+    function handleExecutionComplete(data) {
+        executionCompleted = true;
+        document.getElementById('btn-start').disabled = false;
+        document.getElementById('btn-pause').disabled = true;
+        document.getElementById('execution-progress').style.width = '100%';
+
+        // Добавляем сообщение о завершении только здесь
+        // Проверяем, нет ли уже сообщения о завершении
+        const existingCompletion = document.querySelector('#states-body tr.completion-message');
+        if (!existingCompletion) {
+            const row = document.createElement('tr');
+            row.className = 'completion-message';
+            row.innerHTML = `
+                <td colspan="3" style="color: var(--success); font-weight: 500; text-align: center;">
+                    <i class="fas fa-check-circle"></i> Выполнение завершено
+                </td>
+            `;
+            statesBody.appendChild(row);
+            row.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+        }
+    }
+
+    // Функция подсветки состояния
+    function highlightState(stateName, isActive) {
+        // Сброс предыдущей подсветки
+        document.querySelectorAll('.state-active').forEach(el => {
+            el.classList.remove('state-active');
+        });
+
+        // Сброс подсветки в таблице
+        document.querySelectorAll('#states-table tbody tr.highlighted').forEach(row => {
+            row.classList.remove('highlighted');
+        });
+
+        const nodes = document.querySelectorAll(`[data-name="${stateName}"]`);
+        if (nodes.length > 0) {
+            nodes.forEach(node => {
+                if (isActive) {
+                    node.classList.add('state-active');
+                }
+            });
+
+            // Подсветка соответствующей строки в таблице
+            if (stateRowMap.has(stateName)) {
+                stateRowMap.get(stateName).classList.add('highlighted');
+            }
+        }
+    }
+
+    function highlightEdge(sourceState, targetState, isActive) {
+        const edges = document.querySelectorAll('g.edge');
+        let edgeFound = false;
+
+        console.log(`Trying to highlight edge: ${sourceState} -> ${targetState}`);
+
+        edges.forEach(edge => {
+            const edgeSource = edge.dataset.source;
+            const edgeTarget = edge.dataset.target;
+
+            console.log(`Checking edge: ${edgeSource} -> ${edgeTarget}`);
+
+            if ((edgeSource === sourceState && edgeTarget === targetState) ||
+                (edgeSource === `_${sourceState}` && edgeTarget === `_${targetState}`) ||
+                (edgeSource === `${sourceState}_` && edgeTarget === `${targetState}_`)) {
+
+                if (isActive) {
+                    edge.classList.add('edge-highlight');
+                    // Автоматическое удаление подсветки через 2 секунды
+                    setTimeout(() => {
+                        edge.classList.remove('edge-highlight');
+                    }, 2000);
+                } else {
+                    edge.classList.remove('edge-highlight');
+                }
+                edgeFound = true;
+                console.log(`Edge found and highlighted: ${edgeSource} -> ${edgeTarget}`);
+            }
+        });
+
+        if (!edgeFound) {
+            console.log(`Edge from ${sourceState} to ${targetState} not found`);
+            // Дополнительная отладка
+            console.log("Available edges:");
+            document.querySelectorAll('g.edge').forEach(e => {
+                console.log(`Edge: ${e.dataset.source} -> ${e.dataset.target}`);
+            });
+        }
+    }
+
+
+
+    // Функция центрирования узла в области просмотра
+    function centerNodeInView(stateName) {
+        const node = document.querySelector(`[data-name="${stateName}"]`);
+        if (node) {
+            const svgContainer = document.querySelector('.graph-svg-container');
+            const nodeRect = node.getBoundingClientRect();
+            const containerRect = svgContainer.getBoundingClientRect();
+
+            const centerX = nodeRect.left - containerRect.left + nodeRect.width/2 - containerRect.width/2;
+            const centerY = nodeRect.top - containerRect.top + nodeRect.height/2 - containerRect.height/2;
+
+            svgContainer.scrollTo({
+                top: centerY,
+                left: centerX,
+                behavior: 'smooth'
+            });
+        }
+    }
+
+    // Функция для включения зума (перенесена из SVG)
+    function enableZoom(svgElement) {
+        let viewBox = svgElement.viewBox.baseVal;
+        let width = viewBox.width;
+        let height = viewBox.height;
+
+        svgElement.addEventListener('wheel', function(e) {
+            e.preventDefault();
+
+            let zoom = e.deltaY > 0 ? 1.1 : 0.9;
+            let mouseX = e.clientX - svgElement.getBoundingClientRect().left;
+            let mouseY = e.clientY - svgElement.getBoundingClientRect().top;
+
+            let newWidth = viewBox.width * zoom;
+            let newHeight = viewBox.height * zoom;
+
+            // Ограничиваем масштабирование
+            if (newWidth < width/10 || newWidth > width*10) return;
+
+            let newX = viewBox.x - (mouseX / svgElement.clientWidth) * (newWidth - viewBox.width);
+            let newY = viewBox.y - (mouseY / svgElement.clientHeight) * (newHeight - viewBox.height);
+
+            viewBox.x = newX;
+            viewBox.y = newY;
+            viewBox.width = newWidth;
+            viewBox.height = newHeight;
+        });
+
+        svgElement.addEventListener('dblclick', function(e) {
+            e.preventDefault();
+            viewBox.x = 0;
+            viewBox.y = 0;
+            viewBox.width = width;
+            viewBox.height = height;
+        });
+    }
+
+    // Инициализация зума для основного графа
+    document.addEventListener('DOMContentLoaded', function() {
+        const mainSvg = document.querySelector('.graph-svg-container svg');
+        if (mainSvg) {
+            enableZoom(mainSvg);
+        }
+    });
+    // Инициализируем обработчики для подграфа
+    function initSubgraphEventHandlers() {
+        document.querySelectorAll('#subgraph-modal .node').forEach(node => {
+            node.addEventListener('click', function() {
+                const stateName = this.dataset.name;
+                highlightState(stateName, true);
+            });
+        });
+    }
+
+    // Инициализация обработчиков событий для загруженного контента
+    function initEventHandlers(container) {
+        // Обработчики для узлов графа
+        container.querySelectorAll('.node').forEach(node => {
+            node.addEventListener('click', function() {
+                const stateName = this.dataset.name;
+                if (stateName) {
+                    highlightState(stateName, true);
+
+                    // Найти и подсветить соответствующую строку в таблице
+                    if (stateRowMap.has(stateName)) {
+                        const row = stateRowMap.get(stateName);
+                        row.classList.add('highlighted');
+                        row.scrollIntoView({behavior: 'smooth', block: 'center'});
+                    }
+                }
+            });
+        });
+
+        // Обработчики для кнопок запуска
+        container.querySelector('#btn-start')?.addEventListener('click', handleStartButtonClick);
+    }
+
+    function closeSubgraph() {
+        document.getElementById('subgraph-modal').style.display = 'none';
+        document.getElementById('modal-backdrop').style.display = 'none';
+    }
+
+    function startExecution(executionData) {
+        const btnStart = document.getElementById('btn-start');
+        btnStart.disabled = true;
+        document.getElementById('btn-pause').disabled = false;
+        document.getElementById('execution-progress').style.width = '0%';
+
+        // Сброс состояния таблицы
+        statesBody.innerHTML = '';
+        stateRowMap.clear();
+        stateHistory = [];
+
+        // Добавляем сообщение о начале выполнения
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td colspan="3" style="color: var(--success); font-weight: 500; text-align: center;">
+                <i class="fas fa-play-circle"></i> Запуск выполнения...
+            </td>
+        `;
+        statesBody.appendChild(row);
+
+        // Запуск выполнения на сервере
+        fetch(`/graph/{{ graph.id }}/start/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                data: executionData,
+                graph_id: currentGraphName
+            })
+        })
+        .then(async response => {
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(payload.error || `Ошибка сервера: ${response.status}`);
+            }
+            return payload;
+        })
+        .then(result => {
+            // Обновляем страницу с новым session_id
+            const url = new URL(window.location.href);
+            url.searchParams.set('session', result.session_id);
+            window.location.href = url.toString();
+        })
+        .catch(error => {
+            console.error('Ошибка при запуске выполнения:', error);
+
+            // Добавляем сообщение об ошибке
+            const row = document.createElement('tr');
+            row.innerHTML = `
+            <td colspan="3" style="color: var(--success); font-weight: 500; text-align: center;">
+                <i class="fas fa-exclamation-circle"></i> Ошибка запуска выполнения
+            </td>
+            `;
+            statesBody.appendChild(row);
+
+            btnStart.disabled = false;
+            document.getElementById('btn-pause').disabled = true;
+            if (executionInputSchema.fields && executionInputSchema.fields.length > 0) {
+                openExecutionStartModal();
+                setExecutionInputModalError(error.message || 'Не удалось запустить обход');
+            }
+        });
+    }
+
+    function handleStartButtonClick() {
+        if (executionInputSchema.fields && executionInputSchema.fields.length > 0) {
+            openExecutionStartModal();
+            return;
+        }
+
+        startExecution({});
+    }
+
+    function confirmStartExecution() {
+        const executionInput = collectExecutionInputData();
+        if (executionInput.error) {
+            setExecutionInputModalError(executionInput.error);
+            return;
+        }
+
+        closeExecutionStartModal();
+        startExecution(executionInput.data);
+    }
+
+
+    // Добавляем обработчики кликов на узлы графа
+    document.querySelectorAll('.node').forEach(node => {
+        node.addEventListener('click', function() {
+            const stateName = this.dataset.name;
+            if (stateName) {
+                // Подсветить состояние
+                highlightState(stateName, true);
+
+                // Найти и подсветить соответствующую строку в таблице
+                if (stateRowMap.has(stateName)) {
+                    const row = stateRowMap.get(stateName);
+                    row.classList.add('highlighted');
+                    row.scrollIntoView({behavior: 'smooth', block: 'center'});
+                }
+            }
+        });
+    });
+
+    // Обработчики для кнопок запуска
+    document.getElementById('btn-start').addEventListener('click', handleStartButtonClick);
+
+    document.getElementById('btn-start-confirm')?.addEventListener('click', confirmStartExecution);
+    document.getElementById('btn-start-cancel')?.addEventListener('click', closeExecutionStartModal);
+    document.getElementById('btn-start-close')?.addEventListener('click', closeExecutionStartModal);
+    document.getElementById('execution-start-backdrop')?.addEventListener('click', closeExecutionStartModal);
+
+    document.querySelector('.close-modal').addEventListener('click', function() {
+        document.getElementById('subgraph-modal').style.display = 'none';
+        document.getElementById('modal-backdrop').style.display = 'none';
+    });
+
+    document.getElementById('modal-backdrop').addEventListener('click', function() {
+        document.getElementById('subgraph-modal').style.display = 'none';
+        this.style.display = 'none';
+    });
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    function debugEdges() {
+        console.log("=== DEBUG EDGES ===");
+        const edges = document.querySelectorAll('g.edge');
+        edges.forEach(edge => {
+            console.log(`Edge ID: ${edge.id}`);
+            console.log(`  Data source: ${edge.dataset.source}`);
+            console.log(`  Data target: ${edge.dataset.target}`);
+            console.log(`  Title: ${edge.querySelector('title')?.textContent}`);
+        });
+        console.log("=== END DEBUG ===");
+    }
+    loadTransitions({{ graph.id }});
+    initEdgeAttributes(document);
+    debugEdges();
+});
+</script>
+{% endblock %}

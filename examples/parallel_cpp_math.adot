@@ -1,0 +1,34 @@
+digraph PARALLEL_CPP_MATH {
+    ALWAYS [module=test_funcs.remote_cpp_math, entry_func=always_true]
+
+    PREPARE_FUNC [module=test_funcs.remote_cpp_math, entry_func=prepare_input]
+    SIN_FUNC     [module=test_funcs.remote_cpp_math, entry_func=remote_sin_batch]
+    COS_FUNC     [module=test_funcs.remote_cpp_math, entry_func=remote_cos_batch]
+    EXP_FUNC     [module=test_funcs.remote_cpp_math, entry_func=remote_exp_batch]
+    MERGE_FUNC   [module=test_funcs.remote_cpp_math, entry_func=merge_results]
+    SAVE_FUNC    [module=test_funcs.remote_cpp_math, entry_func=save_result]
+
+    PREPARE [predicate=ALWAYS, function=PREPARE_FUNC, comment="Prepare X array"]
+    SIN     [predicate=ALWAYS, function=SIN_FUNC, comment="Calculate sin(x)"]
+    COS     [predicate=ALWAYS, function=COS_FUNC, comment="Calculate cos(x)"]
+    EXP     [predicate=ALWAYS, function=EXP_FUNC, comment="Calculate exp(x)"]
+    MERGE   [predicate=ALWAYS, function=MERGE_FUNC, comment="Merge branch results"]
+    SAVE    [predicate=ALWAYS, function=SAVE_FUNC, comment="Save final result"]
+
+    PREPARED [parallelism=threading, comment="Run sin/cos/exp branches in parallel"]
+    JOIN [comment="Wait for sin/cos/exp branches"]
+
+    __BEGIN__ -> PREPARED [morphism=PREPARE]
+
+    PREPARED -> SIN_DONE [morphism=SIN]
+    PREPARED -> COS_DONE [morphism=COS]
+    PREPARED -> EXP_DONE [morphism=EXP]
+
+    SIN_DONE -> JOIN
+    COS_DONE -> JOIN
+    EXP_DONE -> JOIN
+
+    JOIN -> MERGED [morphism=MERGE]
+    MERGED -> SAVED [morphism=SAVE]
+    SAVED -> __END__
+}

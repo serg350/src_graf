@@ -1,12 +1,14 @@
 import json
-from unittest.mock import patch
+import math
+from unittest.mock import MagicMock, patch
 
 from django.test import RequestFactory, TestCase
 
 from .aini.aini_parser import build_initial_data, parse_aini
-from .execution_history import record_execution_event
+from .execution_history import record_execution_event, record_execution_events
 from .models import Graph, GraphExecutionSession
 from .views import _build_execution_input_schema, graph_execution_history_json, start_execution
+from config.tasks import execute_graph_task
 
 
 RAW_AINI = """
@@ -16,6 +18,7 @@ RAW_AINI = """
 OutputFilename=@TaskName@_@Pressure@.res
 CopyObjectToRep=[1]{0|1}
 Range=[0.4;0.1:0.6;0.05]
+DimensionalRange=[120.0;1:300;1] [[GPa]]
 Mode=[auNO]{auNO|auLCS|auSegmented}
 LocalAxes=((1;0;0);(0;1;0);(0;0;1))
 GeoFile=[geometry.geo]
@@ -39,6 +42,9 @@ class AINIParserTests(TestCase):
         self.assertEqual(params["Pressure"]["value"]["value"], 34)
         self.assertEqual(params["Mode"]["value_type"], "combobox")
         self.assertEqual(params["Range"]["value_type"], "interval")
+        self.assertEqual(params["DimensionalRange"]["value_type"], "interval")
+        self.assertEqual(params["DimensionalRange"]["value"]["current"], 120.0)
+        self.assertEqual(params["DimensionalRange"]["value"]["unit"], "GPa")
         self.assertEqual(params["GeoFile"]["value_type"], "file_ref")
 
     def test_build_initial_data_resolves_templates(self):
@@ -51,6 +57,8 @@ class AINIParserTests(TestCase):
         data = build_initial_data(RAW_AINI)
         self.assertEqual(data["TaskName"], "ElasticResearch")
         self.assertEqual(data["Pressure"], 34)
+        self.assertEqual(data["Range"], 0.4)
+        self.assertEqual(data["DimensionalRange"], 120.0)
         self.assertEqual(data["OutputFilename"], "ElasticResearch_34.res")
         self.assertTrue(data["CopyObjectToRep"])
 
@@ -68,6 +76,10 @@ class AINIParserTests(TestCase):
         self.assertTrue(fields["TaskName"]["has_initial_value"])
         self.assertEqual(fields["Pressure"]["initial_value"], 34)
         self.assertEqual(fields["Pressure"]["initial_value_label"], "34 [MPa]")
+        self.assertEqual(fields["Range"]["input_type"], "number")
+        self.assertEqual(fields["Range"]["initial_value"], 0.4)
+        self.assertEqual(fields["DimensionalRange"]["initial_value"], 120.0)
+        self.assertEqual(fields["DimensionalRange"]["initial_value_label"], "120.0 [GPa]")
         self.assertTrue(fields["CopyObjectToRep"]["initial_value"])
         self.assertGreaterEqual(schema["prefilled_count"], 3)
 
@@ -124,6 +136,8 @@ class StartExecutionAINITests(TestCase):
             "data": {
                 "TaskName": "CustomTask",
                 "Pressure": 55,
+                "Range": 0.45,
+                "DimensionalRange": 125.5,
             }
         }
         request = self.factory.post(
@@ -139,6 +153,8 @@ class StartExecutionAINITests(TestCase):
         payload = delay_mock.call_args.args[2]
         self.assertEqual(payload["TaskName"], "CustomTask")
         self.assertEqual(payload["Pressure"], 55)
+        self.assertEqual(payload["Range"], 0.45)
+        self.assertEqual(payload["DimensionalRange"], 125.5)
         self.assertNotIn("OutputFilename", payload)
         self.assertNotIn("a", payload)
 
@@ -241,3 +257,68 @@ class ExecutionHistoryTests(TestCase):
         self.assertEqual(payload[0]["status"], GraphExecutionSession.STATUS_FAILED)
         self.assertEqual(payload[0]["error_message"], "boom")
         self.assertEqual(payload[0]["events"][0]["event"], "error")
+
+    def test_record_execution_events_batches_and_sanitizes_nonfinite_numbers(self):
+        session = GraphExecutionSession.objects.create(
+            graph=self.graph,
+            session_id="session-history-batch",
+            initial_data={"TaskName": "Batch"},
+        )
+
+        record_execution_events(
+            session.session_id,
+            [
+                {
+                    "event": "state_enter",
+                    "state": "Prepare",
+                    "timestamp": 1710000020,
+                    "data": {"score": math.inf},
+                },
+                {
+                    "event": "complete",
+                    "state": None,
+                    "timestamp": 1710000021,
+                    "data": {"score": math.nan},
+                },
+            ],
+        )
+
+        session.refresh_from_db()
+        events = list(session.events.all())
+
+        self.assertEqual(session.status, GraphExecutionSession.STATUS_COMPLETED)
+        self.assertEqual(session.event_count, 2)
+        self.assertEqual([event.sequence for event in events], [1, 2])
+        self.assertIsNone(events[0].payload["score"])
+        self.assertIsNone(events[1].payload["score"])
+
+
+class ExecuteGraphTaskTests(TestCase):
+    @patch("config.tasks.publish_execution_ws_event")
+    @patch("config.tasks.record_execution_events")
+    @patch("config.tasks.Parser")
+    def test_false_graph_result_marks_task_as_failed(
+        self,
+        parser_class,
+        record_events,
+        publish_event,
+    ):
+        graph = MagicMock()
+        graph.states = []
+        graph.run.return_value = False
+
+        parser = parser_class.return_value
+        parser.fact.name = "BROKEN_GRAPH"
+        parser.parse_file.return_value = graph
+
+        with self.assertRaisesMessage(RuntimeError, "Graph execution failed"):
+            execute_graph_task.run(
+                "digraph BROKEN_GRAPH { __BEGIN__ -> __END__ }",
+                "failed-session",
+                {},
+            )
+
+        error_event = record_events.call_args.args[1][0]
+        self.assertEqual(error_event["event"], "error")
+        self.assertEqual(error_event["message"], "Graph execution failed")
+        publish_event.assert_called()

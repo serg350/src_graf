@@ -1,15 +1,19 @@
 import tempfile
 import logging
+import threading
 
 from asgiref.sync import async_to_sync
 from celery import shared_task
-from channels.layers import channel_layers, get_channel_layer
+from channels.layers import get_channel_layer
 
-from comsdk.graph import Graph as ComsdkGraph
 from comsdk.parser import Parser
-from comwpc.events import get_event_service
+from comwpc.execution_history import record_execution_events
 
 logger = logging.getLogger(__name__)
+
+HISTORY_EVENT_BATCH_SIZE = 25
+PERSISTED_EXECUTION_EVENT_TYPES = {"state_enter", "complete", "error"}
+
 
 def publish_execution_ws_event(session_id, event):
     channel_layers = get_channel_layer()
@@ -32,13 +36,22 @@ def execute_graph_task(dot_content, session_id, initial_data):
     Вход: DOT/aDOT-текст графа, session_id истории запуска и initial_data для функций графа.
     Выход: None; публикует live-события, пишет историю и отправляет error-событие при исключении.
     """
+    listener_lock = threading.Lock()
+    history_event_buffer = []
+
+    def flush_history_events():
+        if not history_event_buffer:
+            return
+        events_to_persist = history_event_buffer[:]
+        history_event_buffer.clear()
+        record_execution_events(session_id, events_to_persist)
+
     try:
         parser = Parser()
         with tempfile.NamedTemporaryFile(mode='w+', suffix='.adot') as tmp:
             tmp.write(dot_content)
             tmp.seek(0)
             comsdk_graph = parser.parse_file(tmp.name)
-
             def event_listener(event):
                 """
                 Что делает: callback comsdk-графа внутри Celery-задачи.
@@ -46,10 +59,18 @@ def execute_graph_task(dot_content, session_id, initial_data):
                 Вход: dict события state_enter/state_exit/complete/error от исполнителя.
                 Выход: None; дополняет событие graph_id/session_id и публикует его в event service.
                 """
-                event['graph_id'] = parser.fact.name
-                event['session_id'] = session_id
-                get_event_service().publish(session_id, event)
-                publish_execution_ws_event(session_id, event)
+                with listener_lock:
+                    event['graph_id'] = parser.fact.name
+                    event['session_id'] = session_id
+                    publish_execution_ws_event(session_id, event)
+                    event_type = str(event.get("event") or "")
+                    if event_type in PERSISTED_EXECUTION_EVENT_TYPES:
+                        history_event_buffer.append(event.copy())
+                    if (
+                        len(history_event_buffer) >= HISTORY_EVENT_BATCH_SIZE
+                        or event_type in {"complete", "error"}
+                    ):
+                        flush_history_events()
 
             comsdk_graph.add_listener(event_listener)
 
@@ -68,17 +89,23 @@ def execute_graph_task(dot_content, session_id, initial_data):
                         process_subgraphs(state.subgraph)
 
             process_subgraphs(comsdk_graph)
-            comsdk_graph.run(initial_data)
+            if not comsdk_graph.run(initial_data):
+                raise RuntimeError(
+                    str(initial_data.get("__EXCEPTION__") or "Graph execution failed")
+                )
     except Exception as e:
         # Отправляем событие об ошибке
-        get_event_service().publish(session_id, {
+        error_event = {
             'event': 'error',
             'message': str(e),
             'session_id': session_id
-        })
-        publish_execution_ws_event(session_id, {
-            'event': 'error',
-            'message': str(e),
-            'session_id': session_id
-        })
+        }
+        with listener_lock:
+            publish_execution_ws_event(session_id, error_event)
+            history_event_buffer.append(error_event)
+            flush_history_events()
         logger.exception(f"Ошибка выполнения графа: {str(e)}")
+        raise
+    finally:
+        with listener_lock:
+            flush_history_events()

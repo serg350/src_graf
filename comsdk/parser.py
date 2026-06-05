@@ -2,8 +2,9 @@ import re
 import copy
 import importlib as imp
 
-from comsdk.graph import Graph, Func, State, Selector
+from comsdk.graph import Graph, Func, State, Selector, ThreadParallelizationPolicy
 from comsdk.edge import Edge
+from comsdk.executors import build_executor_function
 
 
 class Params():
@@ -12,6 +13,7 @@ class Params():
         'morphism', 'parallelism', 'comment', 'order', 'subgraph',
         'keys_mapping', 'executable_parameters', 'connection_data',
         'preprocessor', 'postprocessor', 'edge_index', 'config_section',
+        'executor', 'operation', 'input_key', 'output_key',
     )
 
     def __init__(self):
@@ -59,6 +61,57 @@ class GraphFactory():
             return Func(), Func(), comment
         pred_f, func_f = Func(), Func() 
         morph = self.entities[morphname]
+        if morph.executor is not None:
+            allowed_params = {
+                "comment",
+                "executor",
+                "operation",
+                "input_key",
+                "output_key",
+                "predicate",
+            }
+            invalid_params = [
+                name
+                for name in morph.__slots__
+                if getattr(morph, name) is not None and name not in allowed_params
+            ]
+            if invalid_params:
+                raise Exception(
+                    "ERROR: Executor morphism {} has unsupported params: {}".format(
+                        morphname,
+                        ", ".join(invalid_params),
+                    )
+                )
+
+            comment = morph.comment.replace("\0", " ")
+            if morph.predicate is not None:
+                if morph.predicate not in self.entities:
+                    raise Exception(
+                        "\tERROR: Predicate {} is not defined!".format(morph.predicate)
+                    )
+                pred = self.entities[morph.predicate]
+                pred_f = Func(
+                    pred.module,
+                    pred.entry_func,
+                    dummy=self.tocpp,
+                    comment=pred.comment,
+                )
+
+            executor_func = build_executor_function(
+                executor=morph.executor,
+                operation=morph.operation,
+                input_key=morph.input_key,
+                output_key=morph.output_key,
+            )
+            func_f = Func(
+                module="comsdk.executors",
+                name=executor_func.__name__,
+                dummy=self.tocpp,
+                func=None if self.tocpp else executor_func,
+                comment=comment,
+            )
+            return pred_f, func_f, comment
+
         for m in morph.__slots__:
             if getattr(morph,m) is not None:
                 if m!="predicate" and m!="function" and m!="comment":
@@ -122,6 +175,8 @@ class GraphFactory():
                 self.states[s].replace_with_graph(subgr)
                 self.graph = Graph(self.graph.init_state, self.graph.term_state)
                 print(self.graph)
+            if s in self.entities and self.entities[s].parallelism == "threading":
+                self.states[s].parallelization_policy = ThreadParallelizationPolicy()
         return self.graph
 
 
@@ -296,8 +351,26 @@ class Parser():
         elif len(right)>1:
             if len(spl) < 4:
                 spl.append("")
+            connection_params = self._param_from_props(spl[3])
             morphs = self._multiple_morphs(spl[3], len(right))
             self.fact.add_state(left[0])
+            if connection_params.selector is not None:
+                state_params = self.fact.entities.get(left[0])
+                if state_params is None:
+                    state_params = Params()
+                    self.fact.entities[left[0]] = state_params
+                if (
+                    state_params.selector is not None
+                    and state_params.selector != connection_params.selector
+                ):
+                    raise Exception(
+                        "\tERROR: State {} defines conflicting selectors: {} and {}".format(
+                            left[0],
+                            state_params.selector,
+                            connection_params.selector,
+                        )
+                    )
+                state_params.selector = connection_params.selector
             if len(morphs)!=len(right):
                 raise Exception("\tERROR: Count of edges do not match to count of states in one to many connection!\n\t\t{}".format(raw))
             for i, st in enumerate(right):
@@ -345,7 +418,7 @@ class Parser():
         dotlines = dotlines[1:]
         # ent_re - regular expr for edges, states, functions properties
         # ищет строки вида ИМЯ[атрибуты]
-        print(dotlines)
+        #print(dotlines)
         ent_re = re.compile(r"^\w+\[.*\]$")
         # top_re - regular expr for topology properties, most time consuming one
         # Строки вида ИСТОЧНИК->ЦЕЛЬ[атрибуты] или ИСТОЧНИК=>ЦЕЛЬ[атрибуты]
@@ -355,7 +428,7 @@ class Parser():
             # функция
             if ent_re.match(ln):
                 name, parm = self._param_from_entln(ln)
-                print(f'{parm}')
+                #print(f'{parm}')
                 self.fact.entities[name] = parm
             # топология
             elif top_re.match(ln):

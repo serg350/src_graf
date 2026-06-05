@@ -47,7 +47,7 @@ class TestADOTParser(unittest.TestCase):
 
     def test_terminal_state_allows_alternative_incoming_edges(self):
         graph = self.parser.parse_file(
-            os.path.join(self.test_files_dir, "composite_modulus_calculation.adot")
+            os.path.join('D:/Dev_MGTY/src/tests/test_aDOT/test_adot_files/composite_modulus_calculation.adot')
         )
         data = {
             "E_target": 150,
@@ -78,6 +78,15 @@ class TestADOTParser(unittest.TestCase):
         self.assertTrue(result)
         self.assertEqual(data["b"], 13)
         self.assertEqual(data["a"], 2)
+
+    def test_selector_declared_on_one_to_many_connection(self):
+        graph = self.parser.parse_file(
+            os.path.join(self.test_files_dir, "selector_on_edge.adot")
+        )
+        branch_state = graph.init_state.transfers[0].output_state
+
+        self.assertEqual(branch_state.selector.name, "branch_selector")
+        self.assertTrue(graph.run({}))
 
     def test_subgraph_integration(self):
         """Тест интеграции подграфов"""

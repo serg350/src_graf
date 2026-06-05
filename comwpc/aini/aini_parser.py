@@ -91,6 +91,12 @@ def _parse_value(raw: str) -> Tuple[str, Any]:
     Вход: строковое значение справа от знака равенства.
     Выход: пара (тип значения, разобранное Python-значение).
     """
+    if (m := _DIM_RE.match(raw)):
+        nested_type, nested_value = _parse_value(m.group("value").strip())
+        unit = m.group("unit").strip()
+        if nested_type == "interval" and isinstance(nested_value, dict):
+            return "interval", {**nested_value, "unit": unit}
+        return "dim", {"value": nested_value, "unit": unit}
     if (m := _BOOL_RE.match(raw)):
         return "bool", m.group("value") == "1"
     if (m := _COMBOBOX_RE.match(raw)):
@@ -113,8 +119,6 @@ def _parse_value(raw: str) -> Tuple[str, Any]:
         }
     if (m := _FILE_RE.match(raw)):
         return "file_ref", m.group("filename")
-    if (m := _DIM_RE.match(raw)):
-        return "dim", {"value": _parse_scalar(m.group("value")), "unit": m.group("unit").strip()}
     if raw.startswith("(") and raw.endswith(")"):
         return "array", _parse_array(raw)
     if raw.startswith("{") and raw.endswith("}"):

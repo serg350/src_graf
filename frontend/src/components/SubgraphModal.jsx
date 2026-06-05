@@ -12,6 +12,7 @@ import "reactflow/dist/style.css";
 import { applyDagreLayout } from "../utils/dagreLayout";
 
 import CustomEdge from "./CustomEdge";
+import GraphNode from "./GraphNode";
 import SubgraphNode from "./SubgraphNode";
 
 export default function SubgraphModal({
@@ -36,10 +37,11 @@ export default function SubgraphModal({
       draggable: true,
       data: {
         label: node.label,
+        comment: node.comment || "",
         subgraphId: node.subgraph,
         onOpenSubgraph,
       },
-      type: node.subgraph ? "subgraph" : undefined,
+      type: node.subgraph ? "subgraph" : "graph",
       position: { x: 0, y: 0 },
     }));
 
@@ -48,6 +50,9 @@ export default function SubgraphModal({
       source: String(edge.source),
       target: String(edge.target),
       label: edge.label || "",
+      data: {
+        comment: edge.comment || edge.label || "",
+      },
       markerEnd: "arrowclosed",
     }));
 
@@ -144,7 +149,7 @@ export default function SubgraphModal({
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
-            nodeTypes={{ subgraph: SubgraphNode }}
+            nodeTypes={{ graph: GraphNode, subgraph: SubgraphNode }}
             edgeTypes={{ default: CustomEdge }}
             fitView
             nodesDraggable

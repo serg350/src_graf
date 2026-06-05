@@ -1,0 +1,41 @@
+digraph COMPOSITE_PSO {
+    ALWAYS [module=test_funcs.cmc_func, entry_func=true_predicate]
+
+    INIT_FUNC   [module=test_funcs.cmc_func, entry_func=pso_initialize]
+    EVAL_0_FUNC [module=test_funcs.cmc_func, entry_func=pso_evaluate_shard_0]
+    EVAL_1_FUNC [module=test_funcs.cmc_func, entry_func=pso_evaluate_shard_1]
+    EVAL_2_FUNC [module=test_funcs.cmc_func, entry_func=pso_evaluate_shard_2]
+    EVAL_3_FUNC [module=test_funcs.cmc_func, entry_func=pso_evaluate_shard_3]
+    BEST_FUNC   [module=test_funcs.cmc_func, entry_func=pso_update_best]
+    STEP_FUNC   [module=test_funcs.cmc_func, entry_func=pso_advance_swarm]
+    SAVE_FUNC   [module=test_funcs.cmc_func, entry_func=pso_save_result]
+    STOP_SELECTOR [module=test_funcs.cmc_func, entry_func=pso_stop_selector]
+
+    INIT   [predicate=ALWAYS, function=INIT_FUNC, comment="Initialize PSO swarm"]
+    EVAL_0 [predicate=ALWAYS, function=EVAL_0_FUNC, comment="Evaluate particle shard 0"]
+    EVAL_1 [predicate=ALWAYS, function=EVAL_1_FUNC, comment="Evaluate particle shard 1"]
+    EVAL_2 [predicate=ALWAYS, function=EVAL_2_FUNC, comment="Evaluate particle shard 2"]
+    EVAL_3 [predicate=ALWAYS, function=EVAL_3_FUNC, comment="Evaluate particle shard 3"]
+    BEST   [predicate=ALWAYS, function=BEST_FUNC, comment="Update personal and global best"]
+    STEP   [predicate=ALWAYS, function=STEP_FUNC, comment="Move swarm to next iteration"]
+    SAVE   [predicate=ALWAYS, function=SAVE_FUNC, comment="Save optimization result"]
+
+    SWARM_READY [parallelism=threading, comment="Evaluate particle shards in parallel"]
+    JOIN [comment="Wait for all particle shards"]
+
+    __BEGIN__ -> SWARM_READY [morphism=INIT]
+
+    SWARM_READY -> SHARD_0_DONE [morphism=EVAL_0]
+    SWARM_READY -> SHARD_1_DONE [morphism=EVAL_1]
+    SWARM_READY -> SHARD_2_DONE [morphism=EVAL_2]
+    SWARM_READY -> SHARD_3_DONE [morphism=EVAL_3]
+
+    SHARD_0_DONE -> JOIN
+    SHARD_1_DONE -> JOIN
+    SHARD_2_DONE -> JOIN
+    SHARD_3_DONE -> JOIN
+
+    JOIN -> BEST_UPDATED [morphism=BEST]
+    BEST_UPDATED -> SWARM_READY, SAVED [selector=STOP_SELECTOR, morphism=(STEP, SAVE)]
+    SAVED -> __END__
+}

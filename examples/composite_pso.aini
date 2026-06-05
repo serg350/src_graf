@@ -1,0 +1,33 @@
+[INPUT] // Runtime input for the composite-material PSO graph
+*TaskName=composite_pso_demo // Run name
+*E_target=[120.0; 1:300; 1] [[GPa]] // Target effective Young modulus
+*E_fiber=[230.0; 1:1000; 1] [[GPa]] // Fiber Young modulus
+*E_matrix=[3.5; 0.1:50; 0.1] [[GPa]] // Matrix Young modulus
+*swarm_size=[32; 4:256; 4] // Number of PSO particles
+*max_iterations=[30; 1:200; 1] // Maximum PSO iterations
+*tolerance=[0.5; 0.001:20; 0.1] [[GPa]] // Acceptable modulus error
+
+[MATERIAL] // Additional material constraints
+-rho_fiber=[1.8; 0.1:10; 0.1] // Fiber density
+-rho_matrix=[1.2; 0.1:10; 0.1] // Matrix density
+-density_target=[1.55; 0.1:10; 0.1] // Soft density target
+-density_weight=[0.05; 0:10; 0.01] // Density penalty in the objective
+
+[PSO] // Swarm optimization controls
+-random_seed=[7; 1:100000; 1] // Deterministic seed
+-inertia=[0.65; 0:1; 0.01] // Velocity inertia
+-cognitive=[1.4; 0:4; 0.1] // Personal-best acceleration
+-social=[1.4; 0:4; 0.1] // Global-best acceleration
+-vf_min=[0.05; 0:1; 0.01] // Minimum fiber volume fraction
+-vf_max=[0.75; 0:1; 0.01] // Maximum fiber volume fraction
+-theta_min=[0; 0:90; 1] [[deg]] // Minimum fiber orientation angle
+-theta_max=[90; 0:90; 1] [[deg]] // Maximum fiber orientation angle
+
+[PARALLELISM] // Graph-runtime parallel execution settings
+-parallel_executor=[threading]{threading|serial|grpc_worker_pool} // Current executor type
+-worker_scope=[local_celery_process]{local_celery_process|remote_worker_pool} // Current worker placement
+-particle_shards=[4; 4:4; 1] // Static shard count in composite_pso.adot
+-parallel_workers={local-thread-0; local-thread-1; local-thread-2; local-thread-3} // Visible logical workers for PSO shards
+
+[OUTPUT] // Result persistence settings
+-output_filename=[composite_pso_result.json] // Result file name

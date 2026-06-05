@@ -13,14 +13,15 @@ import { flattenGraphWithSubgraphs } from "../utils/graph_parser";
 import { applyDagreLayout } from "../utils/dagreLayout";
 
 import CustomEdge from "./CustomEdge";
+import GraphNode from "./GraphNode";
 import SubgraphModal from "./SubgraphModal";
 import SubgraphNode from "./SubgraphNode";
 
-const NODE_TYPES = { subgraph: SubgraphNode };
+const NODE_TYPES = { graph: GraphNode, subgraph: SubgraphNode };
 const EDGE_TYPES = { default: CustomEdge };
 
 function getBaseNodeStyle(nodeType) {
-  if (nodeType === "subgraph") {
+  if (nodeType === "graph" || nodeType === "subgraph") {
     return {};
   }
 
@@ -63,7 +64,7 @@ function buildFlowState(rootGraph, orientation, showSubgraphs, handleOpenSubgrap
       ...node,
       id: String(node.id),
       draggable: true,
-      type: node.type === "subgraph" ? "subgraph" : undefined,
+      type: node.type === "subgraph" ? "subgraph" : "graph",
       data: {
         ...node.data,
         stateId: node.data?.label,
@@ -87,12 +88,17 @@ function buildFlowState(rootGraph, orientation, showSubgraphs, handleOpenSubgrap
       data: {
         fromState: from,
         toState: to,
+        comment: edge.comment || edge.label || "",
         active: false,
       },
     };
   });
 
   return { nodes, edges };
+}
+
+function getEdgeKey(fromState, toState) {
+  return `${fromState || ""}->${toState || ""}`;
 }
 
 export default function GraphView({
@@ -112,7 +118,8 @@ export default function GraphView({
     breadcrumb: [],
   });
 
-  const prevStateRef = useRef(null);
+  const activeStatesRef = useRef(new Set());
+  const activeEdgesRef = useRef(new Set());
   const rootGraphRef = useRef(null);
 
   const handleOpenSubgraph = (subgraphId) => {
@@ -138,7 +145,8 @@ export default function GraphView({
         }
 
         rootGraphRef.current = rootGraph;
-        prevStateRef.current = null;
+        activeStatesRef.current = new Set();
+        activeEdgesRef.current = new Set();
         setModalState({ open: false, graph: null, breadcrumb: [] });
         onGraphMeta?.({
           isLoaded: true,
@@ -173,16 +181,43 @@ export default function GraphView({
       return;
     }
 
-    const { event, state } = executionEvent;
+    const { event, state, from_state: fromState, to_state: toState } = executionEvent;
 
-    if (event !== "state_enter") {
-      return;
+    if (event === "state_enter" && state) {
+      activeStatesRef.current.add(state);
+    }
+
+    if (event === "state_exit" && state) {
+      activeStatesRef.current.delete(state);
+    }
+
+    if (event === "edge_enter") {
+      if (toState) {
+        activeStatesRef.current.add(toState);
+      }
+      if (fromState && toState) {
+        activeEdgesRef.current.add(getEdgeKey(fromState, toState));
+      }
+    }
+
+    if (event === "edge_exit" || event === "edge_error") {
+      if (toState) {
+        activeStatesRef.current.delete(toState);
+      }
+      if (fromState && toState) {
+        activeEdgesRef.current.delete(getEdgeKey(fromState, toState));
+      }
+    }
+
+    if (event === "complete" || event === "error") {
+      activeStatesRef.current.clear();
+      activeEdgesRef.current.clear();
     }
 
     setNodes((currentNodes) =>
       currentNodes.map((node) => {
         const baseStyle = node.data?.baseStyle || {};
-        if (node.data?.stateId === state) {
+        if (activeStatesRef.current.has(node.data?.stateId)) {
           return {
             ...node,
             style: {
@@ -200,21 +235,17 @@ export default function GraphView({
       })
     );
 
-    const previousState = prevStateRef.current;
     setEdges((currentEdges) =>
       currentEdges.map((edge) => ({
         ...edge,
         data: {
           ...edge.data,
-          active:
-            Boolean(previousState) &&
-            edge.data?.fromState === previousState &&
-            edge.data?.toState === state,
+          active: activeEdgesRef.current.has(
+            getEdgeKey(edge.data?.fromState, edge.data?.toState)
+          ),
         },
       }))
     );
-
-    prevStateRef.current = state;
   }, [executionEvent]);
 
   return (

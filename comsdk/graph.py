@@ -1,10 +1,13 @@
+import array
 import collections
+import math
 import os
 import time
 import uuid
 from enum import Enum, auto
 from collections import deque
 from functools import partial
+from concurrent.futures import ThreadPoolExecutor
 import importlib as imp
 
 import comsdk.misc as aux
@@ -67,6 +70,67 @@ class Transfer:
         return self.output_state
 
 
+def _summarize_event_value(value, depth=0):
+    if depth >= 2:
+        rendered = repr(value)
+        if len(rendered) > 500:
+            return {
+                "type": type(value).__name__,
+                "length": len(rendered),
+                "preview": rendered[:500],
+            }
+        return rendered
+    if isinstance(value, dict):
+        items = None
+        for _ in range(3):
+            try:
+                items = list(value.items())
+                break
+            except RuntimeError:
+                time.sleep(0)
+        if items is None:
+            return {
+                "type": "dict",
+                "length": len(value),
+                "preview": "Dictionary changed during event snapshot",
+            }
+        return {
+            str(key): _summarize_event_value(item, depth + 1)
+            for key, item in items
+        }
+    if isinstance(value, (list, tuple)):
+        return {
+            "type": type(value).__name__,
+            "length": len(value),
+            "preview": [
+                _summarize_event_value(item, depth + 1)
+                for item in list(value[:5])
+            ],
+        }
+    if isinstance(value, array.array):
+        return {
+            "type": f"array({value.typecode})",
+            "length": len(value),
+            "preview": [
+                _summarize_event_value(item, depth + 1)
+                for item in list(value[:5])
+            ],
+        }
+    if isinstance(value, str) and len(value) > 500:
+        return {
+            "type": "str",
+            "length": len(value),
+            "preview": value[:500],
+        }
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value
+
+
+def summarize_event_data(data):
+    return _summarize_event_value(data)
+
+
 class IdleRunType(Enum):
     INIT = auto()
     CLEANUP = auto()
@@ -114,16 +178,23 @@ class Graph:
         print("[DEBUG] listener added:", listener)
         self.listeners.append(listener)
 
-    def _notify_listeners(self, event_type, state, data):
+    def _notify_listeners(self, event_type, state, data, metadata=None):
         print("[DEBUG] Notifying listeners:", len(self.listeners))
+        if not self.listeners:
+            return
+        event = {
+            'event': event_type,
+            'state': state.name if state else None,
+            'graph_id': self.id,
+            'timestamp': time.time(),
+            'data': summarize_event_data(data)
+            if event_type in {'state_enter', 'complete', 'error'}
+            else {},
+        }
+        if metadata:
+            event.update(metadata)
         for listener in self.listeners:
-            listener({
-                'event': event_type,
-                'state': state.name if state else None,
-                'graph_id': self.id,
-                'timestamp': time.time(),
-                'data': data.copy()
-            })
+            listener(event.copy())
 
     def collect_states(self):
         """Рекурсивно собирает все состояния графа и подграфов"""
@@ -167,9 +238,14 @@ class Graph:
 
             self.current_state = cur_state
             self._notify_listeners('state_enter', cur_state, data)
- #           print('1) In main loop', implicit_parallelization_info)
+#           print('1) In main loop', implicit_parallelization_info)
 #            morph = _run_state(cur_state, data, implicit_parallelization_info)
-            transfer_f, implicit_parallelization_info = _run_state(cur_state, data, implicit_parallelization_info)
+            transfer_f, implicit_parallelization_info = _run_state(
+                cur_state,
+                data,
+                implicit_parallelization_info,
+                observer=self._notify_listeners,
+            )
 #            print('2) In main loop', implicit_parallelization_info)
             if '__EXCEPTION__' in data:
                 return False
@@ -178,12 +254,13 @@ class Graph:
                 raise GraphUnexpectedTermination(
                     "STATE {}: no transfer function is available".format(cur_state.name)
                 )
+            exited_state = cur_state
             cur_state = transfer_f(data)
             print(cur_state)
 #            print(morph)
             if '__EXCEPTION__' in data:
                 return False
-            self._notify_listeners('state_exit', cur_state, data)
+            self._notify_listeners('state_exit', exited_state, data)
             if cur_state:
                 self.execution_path.append({
                     'state': cur_state.name,
@@ -288,11 +365,11 @@ class State:
         graph.term_state.transfers = self.transfers
         graph.term_state.selector = self.selector
 
-    def run(self, data, implicit_parallelization_info=None):
+    def run(self, data, implicit_parallelization_info=None, observer=None):
         print('STATE {}\n\tjust entered, implicit_parallelization_info: {}'.format(self.name, implicit_parallelization_info))
         # print('\t{}'.format(data))
         if self._proxy_state is not None:
-            return self._proxy_state.run(data, implicit_parallelization_info)
+            return self._proxy_state.run(data, implicit_parallelization_info, observer=observer)
         self._activate_input_edge(implicit_parallelization_info)
         #self.activated_input_edges_number += 1
         print('\trequired input: {}, active: {}, looped: {}'.format(self.input_edges_number, self.activated_input_edges_number, self.looped_edges_number))
@@ -309,6 +386,14 @@ class State:
         if not selected_edges:
             raise GraphUnexpectedTermination(
                 "STATE {}: error in selector: {} ".format(self.name, selected_edges))
+        if len(selected_edges) != len(self.transfers):
+            raise GraphUnexpectedTermination(
+                "STATE {}: selector returned {} decisions for {} transfers".format(
+                    self.name,
+                    len(selected_edges),
+                    len(self.transfers),
+                )
+            )
 #        selected_transfers = [self.transfers[i] for i, _ in enumerate(selected_edges) if selected_edges[i]]
 #        for transf in selected_transfers:
 #            if not transf.edge.predicate(data, dynamic_keys_mapping):
@@ -324,7 +409,8 @@ class State:
         return self.parallelization_policy.make_transfer_func(selected_transfers,
                                                               array_keys_mapping=self.array_keys_mapping,
                                                               implicit_parallelization_info=implicit_parallelization_info,
-                                                              state=self), \
+                                                              state=self,
+                                                              observer=observer), \
                implicit_parallelization_info
 
     def _activate_input_edge(self, implicit_parallelization_info=None):
@@ -384,7 +470,7 @@ class SerialParallelizationPolicy:
     def __init__(self):
         pass
 
-    def make_transfer_func(self, transfers, array_keys_mapping=None, implicit_parallelization_info=None, state=None):
+    def make_transfer_func(self, transfers, array_keys_mapping=None, implicit_parallelization_info=None, state=None, observer=None):
         def _morph(data):
             # print("MORPHING FROM {}".format(state.name))
             if array_keys_mapping is None:
@@ -425,7 +511,16 @@ class SerialParallelizationPolicy:
 #                    print('\t next_state: {}, with impl para info: {}'.format(next_state.name, impl_para_info))
                     if next_state is None:
                         return None
-                    next_t, next_impl_para_info = _run_state(next_state, data, impl_para_info)
+                    if observer is not None:
+                        observer('state_enter', next_state, data)
+                    next_t, next_impl_para_info = _run_state(
+                        next_state,
+                        data,
+                        impl_para_info,
+                        observer=observer,
+                    )
+                    if observer is not None:
+                        observer('state_exit', next_state, data)
 #                    print('\t next_morph: {}'.format(next_morph))
                     if '__EXCEPTION__' in data:
                         return None
@@ -438,6 +533,109 @@ class SerialParallelizationPolicy:
             next_state = next_transfers[0](data)
 #            print(next_state.name, next_impl_para_infos[0])
             return next_state
+        return _morph
+
+
+class ThreadParallelizationPolicy(SerialParallelizationPolicy):
+    def make_transfer_func(self, transfers, array_keys_mapping=None, implicit_parallelization_info=None, state=None, observer=None):
+        if array_keys_mapping is not None or len(transfers) < 2:
+            return super().make_transfer_func(
+                transfers,
+                array_keys_mapping=array_keys_mapping,
+                implicit_parallelization_info=implicit_parallelization_info,
+                state=state,
+                observer=observer,
+            )
+
+        def _morph(data):
+            dynamic_keys_mapping = build_dynamic_keys_mapping(implicit_parallelization_info)
+
+            def run_transfer(transfer):
+                metadata = {
+                    "from_state": state.name if state else None,
+                    "to_state": transfer.output_state.name if transfer.output_state else None,
+                }
+                if observer is not None:
+                    observer("edge_enter", state, data, metadata)
+                try:
+                    next_state = transfer.transfer(data, dynamic_keys_mapping=dynamic_keys_mapping)
+                except Exception:
+                    if observer is not None:
+                        observer("edge_error", state, data, metadata)
+                    raise
+                if observer is not None:
+                    observer("edge_exit", state, data, metadata)
+                return next_state
+
+            with ThreadPoolExecutor(max_workers=len(transfers)) as executor:
+                next_states = list(executor.map(run_transfer, transfers))
+
+            next_transfers = []
+            next_impl_para_infos = []
+
+            for next_state in next_states:
+                if next_state is None:
+                    return None
+
+                if observer is not None:
+                    observer("state_enter", next_state, data)
+
+                next_t, next_impl_para_info = _run_state(
+                    next_state,
+                    data,
+                    implicit_parallelization_info,
+                    observer=observer,
+                )
+
+                if observer is not None:
+                    observer("state_exit", next_state, data)
+
+                if "__EXCEPTION__" in data:
+                    return None
+
+                if next_t is not None:
+                    next_transfers.append(next_t)
+                    next_impl_para_infos.append(next_impl_para_info)
+
+            while len(next_transfers) != 1 or _requires_joint_of_implicit_parallelization(
+                    array_keys_mapping,
+                    next_impl_para_infos,
+            ):
+                if next_impl_para_infos == []:
+                    raise Exception("Morphs count on state {} is {}".format(state.name, str(len(next_transfers))))
+
+                cur_transfers = next_transfers[:]
+                cur_impl_para_infos = next_impl_para_infos[:]
+                next_transfers = []
+                next_impl_para_infos = []
+
+                for t, impl_para_info in zip(cur_transfers, cur_impl_para_infos):
+                    next_state = t(data)
+                    if next_state is None:
+                        return None
+
+                    if observer is not None:
+                        observer("state_enter", next_state, data)
+
+                    next_t, next_impl_para_info = _run_state(
+                        next_state,
+                        data,
+                        impl_para_info,
+                        observer=observer,
+                    )
+
+                    if observer is not None:
+                        observer("state_exit", next_state, data)
+
+                    if "__EXCEPTION__" in data:
+                        return None
+
+                    if next_t is not None:
+                        next_transfers.append(next_t)
+                        next_impl_para_infos.append(next_impl_para_info)
+
+            return next_transfers[0](data)
+
         return _morph
 
 
@@ -462,9 +660,13 @@ def _get_trues(boolean_list):
     return [i for i, val in enumerate(boolean_list) if val == True]
 
 
-def _run_state(state, data, implicit_parallelization_info=None):
+def _run_state(state, data, implicit_parallelization_info=None, observer=None):
     try:
-        next_morphism, next_impl_para_info = state.run(data, implicit_parallelization_info)
+        next_morphism, next_impl_para_info = state.run(
+            data,
+            implicit_parallelization_info,
+            observer=observer,
+        )
     except GraphUnexpectedTermination as e:
         data['__EXCEPTION__'] = str(e)
         return None, None

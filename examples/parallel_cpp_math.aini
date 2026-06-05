@@ -1,0 +1,15 @@
+[INPUT] // Runtime input for the parallel math graph
+*TaskName=parallel_cpp_math_demo // Run name
+*X_start=0.0 [[rad]] // Start of X interval
+*X_end=6.283185307 [[rad]] // End of X interval
+*points=[1000; 2:100000; 1] // Number of points in X
+
+[REMOTE_CPP] // Settings for the future remote C++ calculator
+-cpp_workers={http://cpp-worker-1:9000; http://cpp-worker-2:9000} // Worker service endpoints
+-load_balancing=[least_in_flight]{round_robin|least_in_flight} // Worker selection strategy
+-cpp_encoding=[binary-f64]{binary-f64|json-f64} // Remote C++ transfer encoding
+-timeout_ms=[3000; 100:60000; 100] // Request timeout
+-retries=[1; 0:5; 1] // Retry count
+
+[OUTPUT] // Result persistence settings
+-output_filename=[parallel_cpp_math_result.json] // Result file name

@@ -53,7 +53,7 @@ def _extract_sample_from_aini_parameter(parameter: dict[str, Any]) -> Any:
     if value_type == "combobox" and isinstance(value, dict):
         return value.get("default")
     if value_type == "interval" and isinstance(value, dict):
-        return value.get("min")
+        return value.get("current")
     return value
 
 
@@ -104,7 +104,7 @@ def _format_execution_input_value(value: Any, parameter: dict[str, Any]) -> str:
     else:
         rendered = str(value)
 
-    if parameter.get("value_type") == "dim" and isinstance(parameter.get("value"), dict):
+    if parameter.get("value_type") in {"dim", "interval"} and isinstance(parameter.get("value"), dict):
         unit = parameter["value"].get("unit", "")
         if unit:
             return f"{rendered} [{unit}]"
@@ -159,6 +159,7 @@ def build_execution_input_schema(raw_aini: str) -> dict[str, Any]:
             field["min"] = parameter["value"].get("min")
             field["max"] = parameter["value"].get("max")
             field["step"] = parameter["value"].get("step")
+            field["unit"] = parameter["value"].get("unit", "")
         elif input_type == "number" and field["step"] is None:
             field["step"] = "any"
 

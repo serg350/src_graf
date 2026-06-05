@@ -1,13 +1,18 @@
 import logging
+import math
+import time
 from datetime import datetime, timezone as dt_timezone
 
-from django.db import transaction
+from django.db import OperationalError, close_old_connections, transaction
 from django.db.models import Prefetch
 from django.utils import timezone
 
 from .models import Graph, GraphExecutionEvent, GraphExecutionSession
 
 logger = logging.getLogger(__name__)
+
+EVENT_WRITE_ATTEMPTS = 3
+EVENT_WRITE_RETRY_DELAY_SECONDS = 0.05
 
 
 def create_execution_session(graph: Graph, session_id: str, initial_data: dict) -> GraphExecutionSession:
@@ -20,7 +25,7 @@ def create_execution_session(graph: Graph, session_id: str, initial_data: dict) 
     return GraphExecutionSession.objects.create(
         graph=graph,
         session_id=session_id,
-        initial_data=initial_data or {},
+        initial_data=_json_safe_dict(initial_data or {}),
     )
 
 
@@ -94,40 +99,84 @@ def record_execution_event(session_id: str, event: dict) -> None:
     Вход: session_id и событие из execution listener.
     Выход: None; создает GraphExecutionEvent и обновляет статус GraphExecutionSession.
     """
-    try:
-        with transaction.atomic():
-            session = GraphExecutionSession.objects.select_for_update().get(session_id=session_id)
-            sequence = session.event_count + 1
+    record_execution_events(session_id, [event])
+
+
+def record_execution_events(session_id: str, events: list[dict]) -> None:
+    events = [event for event in events if isinstance(event, dict)]
+    if not events:
+        return
+
+    for attempt in range(EVENT_WRITE_ATTEMPTS):
+        try:
+            _record_execution_events_once(session_id, events)
+            return
+        except GraphExecutionSession.DoesNotExist:
+            logger.warning("Execution session %s was not found for event persistence", session_id)
+            return
+        except OperationalError:
+            close_old_connections()
+            if attempt == EVENT_WRITE_ATTEMPTS - 1:
+                logger.exception("Could not persist execution event for session %s", session_id)
+                return
+            time.sleep(EVENT_WRITE_RETRY_DELAY_SECONDS * (attempt + 1))
+
+
+def _record_execution_events_once(session_id: str, events: list[dict]) -> None:
+    with transaction.atomic():
+        session = GraphExecutionSession.objects.select_for_update().get(session_id=session_id)
+        sequence = session.event_count
+        event_models = []
+
+        for event in events:
+            sequence += 1
             occurred_at = _resolve_event_timestamp(event)
-            payload = event.get("data")
-            if not isinstance(payload, dict):
-                payload = {}
-
-            GraphExecutionEvent.objects.create(
-                session=session,
-                sequence=sequence,
-                event_type=str(event.get("event") or ""),
-                state=str(event.get("state") or ""),
-                message=str(event.get("message") or ""),
-                payload=payload,
-                raw_event=event,
-                occurred_at=occurred_at,
+            event_models.append(
+                GraphExecutionEvent(
+                    session=session,
+                    sequence=sequence,
+                    event_type=str(event.get("event") or ""),
+                    state=str(event.get("state") or ""),
+                    message=str(event.get("message") or ""),
+                    payload=_json_safe_dict(event.get("data")),
+                    raw_event=_json_safe_dict(event),
+                    occurred_at=occurred_at,
+                )
             )
-
-            session.event_count = sequence
             session.last_state = str(event.get("state") or session.last_state or "")
             _update_session_status(session, event, occurred_at)
-            session.save(
-                update_fields=[
-                    "event_count",
-                    "last_state",
-                    "status",
-                    "finished_at",
-                    "error_message",
-                ]
-            )
-    except GraphExecutionSession.DoesNotExist:
-        logger.warning("Execution session %s was not found for event persistence", session_id)
+
+        GraphExecutionEvent.objects.bulk_create(event_models)
+        session.event_count = sequence
+        session.save(
+            update_fields=[
+                "event_count",
+                "last_state",
+                "status",
+                "finished_at",
+                "error_message",
+            ]
+        )
+
+
+def _json_safe_dict(value) -> dict:
+    value = _json_safe_value(value)
+    return value if isinstance(value, dict) else {}
+
+
+def _json_safe_value(value):
+    if isinstance(value, dict):
+        return {
+            str(key): _json_safe_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_value(item) for item in value]
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, (str, int, bool)) or value is None:
+        return value
+    return repr(value)
 
 
 def _resolve_event_timestamp(event: dict):
