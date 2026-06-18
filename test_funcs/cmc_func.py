@@ -216,6 +216,33 @@ def pso_initialize(data):
     data["pso_history"] = []
     _pso_reset_shards(data)
 
+def pso_prepare_shard_requests(data):
+    for shard_index in range(4):
+        particles = []
+        for particle_index in range(shard_index, len(data["pso_positions"]), 4):
+            particles.append({
+                "particle_index": particle_index,
+                "position": data["pso_positions"][particle_index],
+            })
+
+        data[f"pso_shard_request_{shard_index}"] = {
+            "shard_index": shard_index,
+            "shard_count": 4,
+            "particles": particles,
+            "params": {
+                "E_target": data["E_target"],
+                "E_fiber": data["E_fiber"],
+                "E_matrix": data["E_matrix"],
+                "rho_fiber": data.get("rho_fiber", 1.8),
+                "rho_matrix": data.get("rho_matrix", 1.2),
+                "density_target": data.get("density_target"),
+                "density_weight": data.get("density_weight", 0.0),
+                "matrix_size": data.get("matrix_size", 256),
+                "matrix_work_repeats": data.get("matrix_work_repeats", 1),
+                "matrix_correction_weight": data.get("matrix_correction_weight", 0.0),
+            },
+        }
+
 
 def _pso_evaluate_shard(data, shard_index, shard_count=4):
     positions = data["pso_positions"]
@@ -250,6 +277,33 @@ def pso_evaluate_shard_2(data):
 def pso_evaluate_shard_3(data):
     _pso_evaluate_shard(data, 3)
 
+def _pso_iter_shard_results(data, shard_count=4):
+    data["pso_shard_metrics"] = {}
+
+    for shard_index in range(shard_count):
+        shard_payload = data.get(f"pso_shard_{shard_index}", [])
+
+        if isinstance(shard_payload, dict):
+            if "error" in shard_payload:
+                raise RuntimeError(
+                    f"PSO shard {shard_index} failed: {shard_payload['error']}"
+                )
+
+            data["pso_shard_metrics"][str(shard_index)] = {
+                "worker_id": shard_payload.get("worker_id"),
+                "operation": shard_payload.get("operation"),
+                "elapsed_ms": shard_payload.get("elapsed_ms"),
+                "shard_index": shard_payload.get("shard_index", shard_index),
+                "result_count": len(shard_payload.get("results", [])),
+            }
+
+            results = shard_payload.get("results", [])
+        else:
+            results = shard_payload or []
+
+        for result in results:
+            yield result
+
 
 def pso_update_best(data):
     positions = data["pso_positions"]
@@ -259,19 +313,19 @@ def pso_update_best(data):
     global_best_score = data["pso_global_best_score"]
     global_best_properties = data.get("pso_global_best_properties")
 
-    for shard_index in range(4):
-        for result in data.get(f"pso_shard_{shard_index}", []):
-            particle_index = result["particle_index"]
-            score = result["score"]
+    for result in _pso_iter_shard_results(data, shard_count=4):
+        particle_index = int(result["particle_index"])
+        score = float(result["score"])
+        properties = result.get("properties")
 
-            if score < personal_best_scores[particle_index]:
-                personal_best_scores[particle_index] = score
-                personal_best_positions[particle_index] = positions[particle_index][:]
+        if score < personal_best_scores[particle_index]:
+            personal_best_scores[particle_index] = score
+            personal_best_positions[particle_index] = positions[particle_index][:]
 
-            if score < global_best_score:
-                global_best_score = score
-                global_best_position = positions[particle_index][:]
-                global_best_properties = result["properties"]
+        if score < global_best_score:
+            global_best_score = score
+            global_best_position = positions[particle_index][:]
+            global_best_properties = properties
 
     if global_best_properties is None:
         global_best_properties = _pso_composite_properties(global_best_position, data)
@@ -297,6 +351,7 @@ def pso_update_best(data):
             "theta_deg": global_best_properties["theta_deg"],
             "E_effective": global_best_properties["E_effective"],
             "density": global_best_properties["density"],
+            "matrix_benchmark": global_best_properties.get("matrix_benchmark"),
         }
     )
 
@@ -350,6 +405,10 @@ def pso_save_result(data):
         "best_density": data.get("best_density"),
         "best_modulus_error": data.get("best_modulus_error"),
         "best_score": data.get("pso_global_best_score"),
+        "best_matrix_benchmark": (
+            data.get("pso_global_best_properties") or {}
+        ).get("matrix_benchmark"),
+        "shard_metrics": data.get("pso_shard_metrics", {}),
         "history": data.get("pso_history", []),
     }
 

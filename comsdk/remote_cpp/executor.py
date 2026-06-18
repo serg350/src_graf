@@ -41,11 +41,11 @@ def get_remote_cpp_client(data):
 
 
 def execute_remote_cpp(data, operation, input_key, output_key):
-    if input_key not in data:
-        raise KeyError(
-            f"Remote C++ operation '{operation}' requires input key '{input_key}'"
-        )
 
+    input_value = data[input_key]
     client = get_remote_cpp_client(data)
-    data[output_key] = client.compute(operation, data[input_key])
-    return data
+
+    if isinstance(input_value, dict):
+        data[output_key] = client.compute_task(operation, input_value)
+    else:
+        data[output_key] = client.compute(operation, input_value)

@@ -33,6 +33,13 @@ from .execution_inputs import (
 from .events import get_event_service
 from .forms import DotImportForm
 from .graph_payloads import build_graph_list_payload, build_graph_payload
+from .runtime_ir import (
+    CURRENT_IR_VERSION,
+    CURRENT_PARSER_VERSION,
+    hash_source,
+    serialize_runtime_edge,
+    serialize_runtime_state,
+)
 from .models import Edge, Graph, State, Transfer
 
 
@@ -339,6 +346,19 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
 
     if existing_graph:
         graph = existing_graph
+        graph_updates = {
+            "raw_dot": dot_content,
+            "source_hash": hash_source(dot_content),
+            "parser_version": CURRENT_PARSER_VERSION,
+            "ir_version": CURRENT_IR_VERSION,
+        }
+        changed_fields = []
+        for field, value in graph_updates.items():
+            if getattr(graph, field) != value:
+                setattr(graph, field, value)
+                changed_fields.append(field)
+        if changed_fields:
+            graph.save(update_fields=changed_fields)
         print(f"Используем существующий граф: {graph.name} (ID: {graph.id})")
     else:
         # Создаем новый граф
@@ -347,7 +367,11 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
             raw_dot=dot_content,
             raw_aini=raw_aini if parent_graph is None else "",
             is_subgraph=parent_graph is not None,
-            parent_graph=parent_graph
+            parent_graph=parent_graph,
+            source_hash=hash_source(dot_content),
+            parser_version=CURRENT_PARSER_VERSION,
+            ir_version=CURRENT_IR_VERSION,
+            parse_warnings=[],
         )
         print(f"Создан новый граф: {graph.name} (ID: {graph.id}), is_subgraph={parent_graph is not None,}")
 
@@ -453,6 +477,7 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
                 print(f"Файл подграфа не найден после копирования: {temp_subgraph_path}")
 
         # Создаем состояние
+        state_ir = serialize_runtime_state(current)
         if current.name not in state_mapping:
             django_state, created = State.objects.get_or_create(
                 name=current.name,
@@ -462,7 +487,11 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
                     'subgraph': subgraph_obj,
                     'comment': current.comment or "",
                     'array_keys_mapping': current.array_keys_mapping,
-                    'is_subgraph_node': subgraph_obj is not None
+                    'is_subgraph_node': subgraph_obj is not None,
+                    'selector_module': state_ir["selector_module"],
+                    'selector_func': state_ir["selector_func"],
+                    'parallelism': state_ir["parallelism"],
+                    'runtime_attrs': state_ir["runtime_attrs"],
                 }
             )
 
@@ -476,6 +505,18 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
                 if django_state.comment != (current.comment or ""):
                     django_state.comment = current.comment or ""
                     changed_fields.append("comment")
+                state_updates = {
+                    "is_terminal": current.is_term_state,
+                    "array_keys_mapping": current.array_keys_mapping,
+                    "selector_module": state_ir["selector_module"],
+                    "selector_func": state_ir["selector_func"],
+                    "parallelism": state_ir["parallelism"],
+                    "runtime_attrs": state_ir["runtime_attrs"],
+                }
+                for field, value in state_updates.items():
+                    if getattr(django_state, field) != value:
+                        setattr(django_state, field, value)
+                        changed_fields.append(field)
                 if changed_fields:
                     django_state.save(update_fields=changed_fields)
                 print(f"Обновлен подграф для состояния {django_state.name}")
@@ -497,6 +538,24 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
         print(f"Создано состояние: {django_state.name} (ID: {django_state.id}), subgraph={subgraph_obj is not None}")
 
         # Обработка переходов
+        if django_state is state_mapping.get(current.name):
+            state_updates = {
+                "is_terminal": current.is_term_state,
+                "comment": current.comment or "",
+                "array_keys_mapping": current.array_keys_mapping,
+                "selector_module": state_ir["selector_module"],
+                "selector_func": state_ir["selector_func"],
+                "parallelism": state_ir["parallelism"],
+                "runtime_attrs": state_ir["runtime_attrs"],
+            }
+            changed_fields = []
+            for field, value in state_updates.items():
+                if getattr(django_state, field) != value:
+                    setattr(django_state, field, value)
+                    changed_fields.append(field)
+            if changed_fields:
+                django_state.save(update_fields=changed_fields)
+
         for transfer in getattr(current, 'transfers', []):
             target = transfer.output_state
             target_name = target.name
@@ -577,6 +636,7 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
                         print(f"Файл подграфа цели не найден после копирования: {temp_target_subgraph_path}")
 
                 # Создаем целевое состояние
+                target_ir = serialize_runtime_state(target)
                 target_state, created = State.objects.get_or_create(
                     name=target_name,
                     graph=graph,
@@ -585,7 +645,11 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
                         'subgraph': target_subgraph_obj,
                         'comment': target.comment or "",
                         'array_keys_mapping': target.array_keys_mapping,
-                        'is_subgraph_node': target_subgraph_obj is not None
+                        'is_subgraph_node': target_subgraph_obj is not None,
+                        'selector_module': target_ir["selector_module"],
+                        'selector_func': target_ir["selector_func"],
+                        'parallelism': target_ir["parallelism"],
+                        'runtime_attrs': target_ir["runtime_attrs"],
                     }
                 )
 
@@ -599,6 +663,18 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
                     if target_state.comment != (target.comment or ""):
                         target_state.comment = target.comment or ""
                         changed_fields.append("comment")
+                    target_updates = {
+                        "is_terminal": target.is_term_state,
+                        "array_keys_mapping": target.array_keys_mapping,
+                        "selector_module": target_ir["selector_module"],
+                        "selector_func": target_ir["selector_func"],
+                        "parallelism": target_ir["parallelism"],
+                        "runtime_attrs": target_ir["runtime_attrs"],
+                    }
+                    for field, value in target_updates.items():
+                        if getattr(target_state, field) != value:
+                            setattr(target_state, field, value)
+                            changed_fields.append(field)
                     if changed_fields:
                         target_state.save(update_fields=changed_fields)
                     print(f"Обновлен подграф для целевого состояния {target_state.name}")
@@ -608,12 +684,26 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
                 print(f"Создано целевое состояние: {target_state.name} (ID: {target_state.id})")
 
             # Создаем Edge и Transfer
+            edge_ir = serialize_runtime_edge(transfer.edge)
             edge = Edge.objects.create(
                 comment=transfer.edge.comment or "",
                 pred_module=transfer.edge.pred_f.module or "",
                 pred_func=transfer.edge.pred_f.name or "",
                 morph_module=transfer.edge.morph_f.module or "",
-                morph_func=transfer.edge.morph_f.name or ""
+                morph_func=transfer.edge.morph_f.name or "",
+                executor_type=edge_ir["executor_type"],
+                executor_operation=edge_ir["executor_operation"],
+                executor_input_key=edge_ir["executor_input_key"],
+                executor_output_key=edge_ir["executor_output_key"],
+                executor_options=edge_ir["executor_options"],
+                keys_mapping=edge_ir["keys_mapping"],
+                relative_keys=edge_ir["relative_keys"],
+                default_relative_key=edge_ir["default_relative_key"],
+                mandatory_keys=edge_ir["mandatory_keys"],
+                use_proxy_data_for_pre_post_processing=edge_ir[
+                    "use_proxy_data_for_pre_post_processing"
+                ],
+                runtime_attrs=edge_ir["runtime_attrs"],
             )
 
             transfer_obj = Transfer.objects.create(
@@ -621,7 +711,9 @@ def process_graph_recursively(parser, comsdk_graph, dot_path, temp_dir, processe
                 edge=edge,
                 target=state_mapping[target_name],
                 graph=graph,
-                order=transfer.edge.order
+                order=transfer.edge.order,
+                arrow_type="->",
+                runtime_attrs={},
             )
             print(f"Создан переход: {edge.comment} (ID: {transfer_obj.id})")
 
@@ -651,7 +743,7 @@ def start_execution(request, graph_id):
 
     create_execution_session(graph, session_id=session_id, initial_data=initial_data)
     execute_graph_task.delay(
-        graph.raw_dot,
+        graph.id,
         session_id,
         initial_data
     )

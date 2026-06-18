@@ -167,6 +167,87 @@ class RemoteCppClient:
 
         raise RuntimeError(f"Remote C++ compute failed: {last_error}")
 
+    def compute_task(self, operation, payload):
+        operation = str(operation).strip()
+        if not OPERATION_RE.fullmatch(operation):
+            raise ValueError(f"Invalid remote C++ operation name: {operation!r}")
+
+        particles_count = None
+        if isinstance(payload, dict):
+            particles_count = safe_len(payload.get("particles", []))
+
+        last_error = None
+        attempts_count = self.retries + 1
+
+        for attempt in range(1, attempts_count + 1):
+            worker = self._reserve_worker()
+            started_at = time.perf_counter()
+            logger.info(
+                "[CPP] task start operation=%s worker=%s load_balancing=%s particles=%s attempt=%s/%s timeout_s=%.3f",
+                operation,
+                worker,
+                self.load_balancing,
+                particles_count,
+                attempt,
+                attempts_count,
+                self.timeout,
+            )
+
+            try:
+                result = self._send_task_json(worker, operation, payload)
+                duration = time.perf_counter() - started_at
+                result_count = (
+                    safe_len(result.get("results", []))
+                    if isinstance(result, dict)
+                    else None
+                )
+                logger.info(
+                    "[CPP] task done operation=%s worker=%s load_balancing=%s particles=%s results=%s duration_s=%.3f attempt=%s/%s",
+                    operation,
+                    worker,
+                    self.load_balancing,
+                    particles_count,
+                    result_count,
+                    duration,
+                    attempt,
+                    attempts_count,
+                )
+                return result
+            except Exception as exc:
+                duration = time.perf_counter() - started_at
+                last_error = exc
+                logger.warning(
+                    "[CPP] task error operation=%s worker=%s load_balancing=%s particles=%s duration_s=%.3f attempt=%s/%s error=%s",
+                    operation,
+                    worker,
+                    self.load_balancing,
+                    particles_count,
+                    duration,
+                    attempt,
+                    attempts_count,
+                    exc,
+                )
+            finally:
+                self._mark_finished(worker)
+
+        raise RuntimeError(f"Remote C++ task failed: {last_error}")
+
+    def _send_task_json(self, worker, operation, payload):
+        body = json.dumps({
+            "operation": operation,
+            "payload": payload,
+        }).encode("utf-8")
+
+        request = urllib.request.Request(
+            f"{worker.rstrip('/')}/task",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        with NO_PROXY_OPENER.open(request, timeout=self.timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
+
     def _reserve_worker(self):
         if not self.workers:
             raise RuntimeError("No remote C++ workers configured")

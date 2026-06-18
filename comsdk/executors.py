@@ -23,4 +23,10 @@ def build_executor_function(executor, operation, input_key=None, output_key=None
         )
 
     execute.__name__ = f"{executor_name}_{operation_name}"
+    execute._comsdk_executor_spec = {
+        "executor_type": executor_name,
+        "operation": operation_name,
+        "input_key": resolved_input_key,
+        "output_key": resolved_output_key,
+    }
     return execute

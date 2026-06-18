@@ -1,7 +1,12 @@
 import json
 from typing import Any
 
-from .aini.aini_parser import build_initial_data, parse_aini
+from .aini.aini_parser import (
+    _resolve_templates,
+    _runtime_value,
+    build_initial_data,
+    parse_aini,
+)
 from .models import Graph
 
 
@@ -278,28 +283,33 @@ def prepare_execution_initial_data(graph: Graph, request_data: dict[str, Any]) -
     Вход: модель Graph и словарь данных из запроса.
     Выход: очищенный словарь параметров; проверяет обязательные поля aINI и приводит типы.
     """
+
     if not graph.raw_aini:
         return dict(request_data)
 
     parsed = parse_aini(graph.raw_aini)
     parameters = {parameter["name"]: parameter for parameter in parsed["parameters"]}
 
-    result: dict[str, Any] = {}
-    missing_required = []
+    result = {
+        parameter["name"]: _runtime_value(parameter["value_type"], parameter["value"])
+        for parameter in parsed["parameters"]
+    }
 
-    for field_name, parameter in parameters.items():
-        if field_name not in request_data or request_data[field_name] in ("", None):
-            if parameter.get("required"):
-                missing_required.append(field_name)
-            continue
+    for field_name, raw_value in request_data.items():
+        if field_name in parameters:
+            if raw_value in ("", None):
+                continue
+            result[field_name] = _coerce_execution_value(raw_value, parameters[field_name])
+        else:
+            result[field_name] = raw_value
 
-        result[field_name] = _coerce_execution_value(request_data[field_name], parameter)
+    missing_required = [
+        name
+        for name, parameter in parameters.items()
+        if parameter.get("required") and result.get(name) in ("", None)
+    ]
 
     if missing_required:
         raise ValueError(f"Missing required aINI fields: {', '.join(missing_required)}")
 
-    for key, value in request_data.items():
-        if key not in result and key not in parameters:
-            result[key] = value
-
-    return result
+    return _resolve_templates(result)

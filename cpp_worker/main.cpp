@@ -14,6 +14,9 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <nlohmann/json.hpp>
+
+using json = nlohmann::json;
 
 std::string get_env_or_default(const char* name, const std::string& fallback) {
     const char* value = std::getenv(name);
@@ -286,6 +289,235 @@ void send_binary_response(
     }
 }
 
+struct MatrixBenchmarkResult {
+    int size;
+    int repeats;
+    std::size_t dense_entries;
+    std::size_t matrix_bytes;
+    double response;
+    double elapsed_ms;
+};
+
+int bounded_int_param(
+    const json& params,
+    const std::string& name,
+    int fallback,
+    int lower,
+    int upper
+) {
+    int value = fallback;
+    if (params.contains(name) && !params[name].is_null()) {
+        value = params[name].get<int>();
+    }
+    return std::max(lower, std::min(value, upper));
+}
+
+MatrixBenchmarkResult run_matrix_benchmark(
+    double vf,
+    double theta_deg,
+    double axial_modulus,
+    double transverse_modulus,
+    const json& params
+) {
+    int matrix_size = bounded_int_param(params, "matrix_size", 0, 0, 4096);
+    int work_repeats = bounded_int_param(params, "matrix_work_repeats", 0, 0, 100);
+
+    std::size_t dense_entries =
+        static_cast<std::size_t>(matrix_size) *
+        static_cast<std::size_t>(matrix_size);
+    std::size_t matrix_bytes = dense_entries * sizeof(double);
+
+    if (matrix_size == 0 || work_repeats == 0) {
+        return {matrix_size, work_repeats, dense_entries, matrix_bytes, 0.0, 0.0};
+    }
+
+    auto started_at = std::chrono::steady_clock::now();
+
+    std::vector<double> dense_matrix(dense_entries);
+    std::vector<double> x(static_cast<std::size_t>(matrix_size));
+    std::vector<double> y(static_cast<std::size_t>(matrix_size));
+
+    double theta_rad = theta_deg * 3.14159265358979323846 / 180.0;
+    double phase = 0.011 + 0.003 * vf + 0.0001 * theta_deg;
+    double stiffness_scale = 0.5 * (axial_modulus + transverse_modulus);
+
+    for (int i = 0; i < matrix_size; ++i) {
+        double normalized_i = static_cast<double>(i + 1) / matrix_size;
+        x[static_cast<std::size_t>(i)] =
+            std::sin((i + 1) * phase) +
+            0.25 * std::cos(theta_rad + normalized_i);
+    }
+
+    for (int i = 0; i < matrix_size; ++i) {
+        double normalized_i = static_cast<double>(i + 1) / matrix_size;
+        double diagonal =
+            1.0 +
+            0.01 * stiffness_scale +
+            0.2 * vf +
+            0.05 * std::sin(theta_rad + normalized_i);
+
+        for (int j = 0; j < matrix_size; ++j) {
+            double normalized_j = static_cast<double>(j + 1) / matrix_size;
+            double distance = static_cast<double>(std::abs(i - j) + 1);
+            double orientation_kernel =
+                std::cos(theta_rad + normalized_i * normalized_j);
+            double coupling =
+                0.00005 * (1.0 + vf) * orientation_kernel / distance;
+
+            dense_matrix[
+                static_cast<std::size_t>(i) * matrix_size +
+                static_cast<std::size_t>(j)
+            ] = (i == j ? diagonal : coupling);
+        }
+    }
+
+    double accumulated_response = 0.0;
+
+    for (int repeat = 0; repeat < work_repeats; ++repeat) {
+        double rayleigh_numerator = 0.0;
+        double rayleigh_denominator = 0.0;
+
+        for (int i = 0; i < matrix_size; ++i) {
+            const double* row =
+                dense_matrix.data() +
+                static_cast<std::size_t>(i) * matrix_size;
+            double value = 0.0;
+
+            for (int j = 0; j < matrix_size; ++j) {
+                value += row[j] * x[static_cast<std::size_t>(j)];
+            }
+
+            y[static_cast<std::size_t>(i)] = value;
+            rayleigh_numerator += x[static_cast<std::size_t>(i)] * value;
+            rayleigh_denominator +=
+                x[static_cast<std::size_t>(i)] *
+                x[static_cast<std::size_t>(i)];
+        }
+
+        double rayleigh =
+            rayleigh_numerator / (rayleigh_denominator + 1.0e-12);
+        double norm = 0.0;
+
+        for (int i = 0; i < matrix_size; ++i) {
+            norm += y[static_cast<std::size_t>(i)] * y[static_cast<std::size_t>(i)];
+        }
+        norm = std::sqrt(norm / matrix_size) + 1.0e-12;
+
+        accumulated_response += std::abs(rayleigh);
+
+        for (int i = 0; i < matrix_size; ++i) {
+            x[static_cast<std::size_t>(i)] = y[static_cast<std::size_t>(i)] / norm;
+        }
+    }
+
+    auto finished_at = std::chrono::steady_clock::now();
+    double elapsed_ms = std::chrono::duration<double, std::milli>(
+        finished_at - started_at
+    ).count();
+
+    return {
+        matrix_size,
+        work_repeats,
+        dense_entries,
+        matrix_bytes,
+        accumulated_response / work_repeats,
+        elapsed_ms
+    };
+}
+
+json evaluate_particle(const json& particle, const json& params) {
+    int particle_index = particle.at("particle_index").get<int>();
+    auto position = particle.at("position");
+
+    double vf = position.at(0).get<double>();
+    double theta_deg = position.at(1).get<double>();
+
+    double e_fiber = params.value("E_fiber", 230.0);
+    double e_matrix = params.value("E_matrix", 3.5);
+    double rho_fiber = params.value("rho_fiber", 1.8);
+    double rho_matrix = params.value("rho_matrix", 1.2);
+    double e_target = params.value("E_target", 120.0);
+    double density_weight = params.value("density_weight", 0.0);
+
+    double axial_modulus = vf * e_fiber + (1.0 - vf) * e_matrix;
+    double transverse_modulus = 1.0 / (vf / e_fiber + (1.0 - vf) / e_matrix);
+    double theta_rad = theta_deg * 3.14159265358979323846 / 180.0;
+    double orientation_factor = std::pow(std::cos(theta_rad), 4.0);
+
+    double e_effective =
+        orientation_factor * axial_modulus +
+        (1.0 - orientation_factor) * transverse_modulus;
+
+    MatrixBenchmarkResult matrix_benchmark = run_matrix_benchmark(
+        vf,
+        theta_deg,
+        axial_modulus,
+        transverse_modulus,
+        params
+    );
+    double matrix_correction_weight = params.value("matrix_correction_weight", 0.0);
+    double matrix_correction =
+        matrix_correction_weight * matrix_benchmark.response;
+    e_effective += matrix_correction;
+
+    double density = vf * rho_fiber + (1.0 - vf) * rho_matrix;
+    double score = std::abs(e_effective - e_target);
+
+    if (params.contains("density_target") && !params["density_target"].is_null()) {
+        double density_target = params["density_target"].get<double>();
+        score += density_weight * std::abs(density - density_target);
+    }
+
+    return {
+        {"particle_index", particle_index},
+        {"score", score},
+        {"properties", {
+            {"Vf", vf},
+            {"theta_deg", theta_deg},
+            {"E_effective", e_effective},
+            {"density", density},
+            {"axial_modulus", axial_modulus},
+            {"transverse_modulus", transverse_modulus},
+            {"orientation_factor", orientation_factor},
+            {"matrix_benchmark", {
+                {"storage", "full_dense"},
+                {"size", matrix_benchmark.size},
+                {"work_repeats", matrix_benchmark.repeats},
+                {"dense_entries", matrix_benchmark.dense_entries},
+                {"matrix_bytes", matrix_benchmark.matrix_bytes},
+                {"response", matrix_benchmark.response},
+                {"elapsed_ms", matrix_benchmark.elapsed_ms},
+                {"correction", matrix_correction}
+            }}
+        }}
+    };
+}
+
+
+json handle_pso_evaluate_shard(const json& payload) {
+    json params = payload.value("params", json::object());
+    json results = json::array();
+
+    for (const auto& particle : payload.at("particles")) {
+        results.push_back(evaluate_particle(particle, params));
+    }
+
+    return {
+        {"shard_index", payload.value("shard_index", -1)},
+        {"shard_count", payload.value("shard_count", 1)},
+        {"results", results}
+    };
+}
+
+
+json handle_task_operation(const std::string& operation, const json& payload) {
+    if (operation == "pso_evaluate_shard") {
+        return handle_pso_evaluate_shard(payload);
+    }
+
+    throw std::runtime_error("Unsupported task operation: " + operation);
+}
+
 void handle_client(int client_fd, const std::string& worker_id) {
     try {
         std::string request = read_request(client_fd);
@@ -310,6 +542,29 @@ void handle_client(int client_fd, const std::string& worker_id) {
             ).count();
 
             send_binary_response(client_fd, operation, worker_id, elapsed_ms, result);
+            return;
+        }
+
+        if (path == "/task") {
+            std::string body = extract_body(request);
+            json request_json = json::parse(body);
+
+            std::string operation = request_json.at("operation").get<std::string>();
+            json payload = request_json.value("payload", json::object());
+
+            auto started_at = std::chrono::steady_clock::now();
+            json task_result = handle_task_operation(operation, payload);
+            auto finished_at = std::chrono::steady_clock::now();
+
+            double elapsed_ms = std::chrono::duration<double, std::milli>(
+                finished_at - started_at
+            ).count();
+
+            task_result["operation"] = operation;
+            task_result["worker_id"] = worker_id;
+            task_result["elapsed_ms"] = elapsed_ms;
+
+            send_response(client_fd, 200, task_result.dump());
             return;
         }
 

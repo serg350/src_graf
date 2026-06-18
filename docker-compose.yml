@@ -19,12 +19,30 @@ services:
     volumes:
       - .:/app
     depends_on:
+      - postgres
       - redis
       - cpp-worker-1
       - cpp-worker-2
     environment:
+      - DB_ENGINE=postgresql
+      - DB_NAME=comwpc
+      - DB_USER=comwpc
+      - DB_PASSWORD=comwpc
+      - DB_HOST=postgres
+      - DB_PORT=5432
       - REDIS_URL=redis://redis:6379/0
       - EVENT_SERVICE_URL=redis://redis:6379/1
+
+  postgres:
+    image: "postgres:16-alpine"
+    environment:
+      - POSTGRES_DB=comwpc
+      - POSTGRES_USER=comwpc
+      - POSTGRES_PASSWORD=comwpc
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
 
   redis:
     image: "redis:7.0-alpine"
@@ -53,3 +71,4 @@ volumes:
   static_value:
   media_value:
   redis-data:
+  postgres-data:

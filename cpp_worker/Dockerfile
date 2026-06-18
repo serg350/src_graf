@@ -2,6 +2,8 @@ FROM gcc:13-bookworm
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y nlohmann-json3-dev
+
 COPY main.cpp .
 RUN g++ -std=c++17 -O2 -pthread main.cpp -o cpp_worker
 

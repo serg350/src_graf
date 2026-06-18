@@ -1,4 +1,3 @@
-import tempfile
 import logging
 import threading
 
@@ -6,13 +5,25 @@ from asgiref.sync import async_to_sync
 from celery import shared_task
 from channels.layers import get_channel_layer
 
-from comsdk.parser import Parser
 from comwpc.execution_history import record_execution_events
+from comwpc.models import Graph as StoredGraph
+from comwpc.runtime_ir import build_comsdk_graph_from_db
 
 logger = logging.getLogger(__name__)
 
 HISTORY_EVENT_BATCH_SIZE = 25
 PERSISTED_EXECUTION_EVENT_TYPES = {"state_enter", "complete", "error"}
+
+
+def _normalize_graph_id(graph_id):
+    try:
+        return int(graph_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "execute_graph_task expects graph_id, not raw DOT/aDOT text. "
+            "Restart web and Celery workers after the DB IR migration and "
+            "drop old queued execution tasks."
+        ) from exc
 
 
 def publish_execution_ws_event(session_id, event):
@@ -29,13 +40,7 @@ def publish_execution_ws_event(session_id, event):
 
 
 @shared_task
-def execute_graph_task(dot_content, session_id, initial_data):
-    """
-    Что делает: Celery-задача фонового исполнения графа после start_execution.
-    Место: Celery-задача фонового исполнения графа после start_execution.
-    Вход: DOT/aDOT-текст графа, session_id истории запуска и initial_data для функций графа.
-    Выход: None; публикует live-события, пишет историю и отправляет error-событие при исключении.
-    """
+def execute_graph_task(graph_id, session_id, initial_data):
     listener_lock = threading.Lock()
     history_event_buffer = []
 
@@ -47,64 +52,45 @@ def execute_graph_task(dot_content, session_id, initial_data):
         record_execution_events(session_id, events_to_persist)
 
     try:
-        parser = Parser()
-        with tempfile.NamedTemporaryFile(mode='w+', suffix='.adot') as tmp:
-            tmp.write(dot_content)
-            tmp.seek(0)
-            comsdk_graph = parser.parse_file(tmp.name)
-            def event_listener(event):
-                """
-                Что делает: callback comsdk-графа внутри Celery-задачи.
-                Место: callback comsdk-графа внутри Celery-задачи.
-                Вход: dict события state_enter/state_exit/complete/error от исполнителя.
-                Выход: None; дополняет событие graph_id/session_id и публикует его в event service.
-                """
-                with listener_lock:
-                    event['graph_id'] = parser.fact.name
-                    event['session_id'] = session_id
-                    publish_execution_ws_event(session_id, event)
-                    event_type = str(event.get("event") or "")
-                    if event_type in PERSISTED_EXECUTION_EVENT_TYPES:
-                        history_event_buffer.append(event.copy())
-                    if (
-                        len(history_event_buffer) >= HISTORY_EVENT_BATCH_SIZE
-                        or event_type in {"complete", "error"}
-                    ):
-                        flush_history_events()
+        stored_graph = StoredGraph.objects.get(pk=_normalize_graph_id(graph_id))
+        comsdk_graph = build_comsdk_graph_from_db(
+            stored_graph,
+            execution_options=initial_data if isinstance(initial_data, dict) else {},
+        )
 
-            comsdk_graph.add_listener(event_listener)
+        def event_listener(event):
+            with listener_lock:
+                event["graph_id"] = stored_graph.name
+                event["graph_pk"] = stored_graph.pk
+                event["session_id"] = session_id
+                publish_execution_ws_event(session_id, event)
 
-            # Рекурсивная обработка подграфов
-            def process_subgraphs(graph):
-                """
-                Что делает: подключение общего listener ко всем вложенным comsdk-подграфам.
-                Место: подключение общего listener ко всем вложенным comsdk-подграфам.
-                Вход: comsdk Graph или подграф.
-                Выход: None; рекурсивно регистрирует event_listener на найденных подграфах.
-                """
-                for state in graph.states:
-                    if hasattr(state, 'subgraph') and state.subgraph:
-                        # Добавляем обработчик для подграфа
-                        state.subgraph.add_listener(event_listener)
-                        process_subgraphs(state.subgraph)
+                event_type = str(event.get("event") or "")
+                if event_type in PERSISTED_EXECUTION_EVENT_TYPES:
+                    history_event_buffer.append(event.copy())
+                if (
+                    len(history_event_buffer) >= HISTORY_EVENT_BATCH_SIZE
+                    or event_type in {"complete", "error"}
+                ):
+                    flush_history_events()
 
-            process_subgraphs(comsdk_graph)
-            if not comsdk_graph.run(initial_data):
-                raise RuntimeError(
-                    str(initial_data.get("__EXCEPTION__") or "Graph execution failed")
-                )
-    except Exception as e:
-        # Отправляем событие об ошибке
+        comsdk_graph.add_listener(event_listener)
+
+        if not comsdk_graph.run(initial_data):
+            raise RuntimeError(
+                str(initial_data.get("__EXCEPTION__") or "Graph execution failed")
+            )
+    except Exception as exc:
         error_event = {
-            'event': 'error',
-            'message': str(e),
-            'session_id': session_id
+            "event": "error",
+            "message": str(exc),
+            "session_id": session_id,
         }
         with listener_lock:
             publish_execution_ws_event(session_id, error_event)
             history_event_buffer.append(error_event)
             flush_history_events()
-        logger.exception(f"Ошибка выполнения графа: {str(e)}")
+        logger.exception("Graph execution failed: %s", exc)
         raise
     finally:
         with listener_lock:

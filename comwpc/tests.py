@@ -2,11 +2,15 @@ import json
 import math
 from unittest.mock import MagicMock, patch
 
+from comsdk.edge import Edge as RuntimeEdge
+from comsdk.executors import build_executor_function
+from comsdk.graph import Func, ThreadParallelizationPolicy
 from django.test import RequestFactory, TestCase
 
 from .aini.aini_parser import build_initial_data, parse_aini
 from .execution_history import record_execution_event, record_execution_events
-from .models import Graph, GraphExecutionSession
+from .models import Edge, Graph, GraphExecutionSession, State, Transfer
+from .runtime_ir import build_comsdk_graph_from_db, serialize_runtime_edge
 from .views import _build_execution_input_schema, graph_execution_history_json, start_execution
 from config.tasks import execute_graph_task
 
@@ -95,7 +99,7 @@ class StartExecutionAINITests(TestCase):
         self.factory = RequestFactory()
 
     @patch("comwpc.views.execute_graph_task.delay")
-    def test_start_execution_requires_required_aini_fields(self, delay_mock):
+    def test_start_execution_uses_aini_defaults_for_omitted_fields(self, delay_mock):
         """
         Что делает: тест валидации обязательных aINI-полей при запуске графа.
         Место: тест валидации обязательных aINI-полей при запуске графа.
@@ -115,11 +119,16 @@ class StartExecutionAINITests(TestCase):
         )
 
         response = start_execution(request, graph.id)
-        self.assertEqual(response.status_code, 400)
-        delay_mock.assert_not_called()
+        self.assertEqual(response.status_code, 200)
+        delay_mock.assert_called_once()
+
+        payload = delay_mock.call_args.args[2]
+        self.assertEqual(payload["TaskName"], "ElasticResearch")
+        self.assertEqual(payload["Pressure"], 55)
+        self.assertEqual(payload["OutputFilename"], "ElasticResearch_55.res")
 
     @patch("comwpc.views.execute_graph_task.delay")
-    def test_start_execution_uses_only_user_provided_aini_values(self, delay_mock):
+    def test_start_execution_merges_aini_defaults_with_user_values(self, delay_mock):
         """
         Что делает: тест подготовки payload для Celery-задачи запуска графа.
         Место: тест подготовки payload для Celery-задачи запуска графа.
@@ -149,13 +158,16 @@ class StartExecutionAINITests(TestCase):
         response = start_execution(request, graph.id)
         self.assertEqual(response.status_code, 200)
         delay_mock.assert_called_once()
+        self.assertEqual(delay_mock.call_args.args[0], graph.id)
 
         payload = delay_mock.call_args.args[2]
         self.assertEqual(payload["TaskName"], "CustomTask")
         self.assertEqual(payload["Pressure"], 55)
         self.assertEqual(payload["Range"], 0.45)
         self.assertEqual(payload["DimensionalRange"], 125.5)
-        self.assertNotIn("OutputFilename", payload)
+        self.assertEqual(payload["OutputFilename"], "CustomTask_55.res")
+        self.assertEqual(payload["CopyObjectToRep"], True)
+        self.assertEqual(payload["Mode"], "auNO")
         self.assertNotIn("a", payload)
 
         session = GraphExecutionSession.objects.get(session_id=delay_mock.call_args.args[1])
@@ -294,26 +306,242 @@ class ExecutionHistoryTests(TestCase):
 
 
 class ExecuteGraphTaskTests(TestCase):
+    def _create_parallel_policy_graph(self):
+        graph = Graph.objects.create(name="parallel_policy_graph")
+        begin = State.objects.create(name="__BEGIN__", graph=graph)
+        swarm = State.objects.create(
+            name="SWARM_READY",
+            graph=graph,
+            parallelism="threading",
+        )
+        end = State.objects.create(name="__END__", graph=graph, is_terminal=True)
+        edge = Edge.objects.create(
+            comment="pass",
+            pred_module="",
+            pred_func="",
+            morph_module="",
+            morph_func="",
+        )
+        Transfer.objects.create(
+            source=begin,
+            target=swarm,
+            edge=edge,
+            graph=graph,
+            order=0,
+        )
+        Transfer.objects.create(
+            source=swarm,
+            target=end,
+            edge=edge,
+            graph=graph,
+            order=0,
+        )
+        return graph
+
+    def test_parallel_executor_serial_disables_threading_policy(self):
+        graph = self._create_parallel_policy_graph()
+
+        threaded_graph = build_comsdk_graph_from_db(
+            graph,
+            execution_options={"parallel_executor": "threading"},
+        )
+        serial_graph = build_comsdk_graph_from_db(
+            graph,
+            execution_options={"parallel_executor": "serial"},
+        )
+
+        threaded_swarm = threaded_graph.init_state.transfers[0].output_state
+        serial_swarm = serial_graph.init_state.transfers[0].output_state
+        self.assertIsInstance(
+            threaded_swarm.parallelization_policy,
+            ThreadParallelizationPolicy,
+        )
+        self.assertNotIsInstance(
+            serial_swarm.parallelization_policy,
+            ThreadParallelizationPolicy,
+        )
+
+    def test_parallel_executor_grpc_worker_pool_is_not_implemented(self):
+        graph = self._create_parallel_policy_graph()
+
+        with self.assertRaisesMessage(ValueError, "grpc_worker_pool is not implemented"):
+            build_comsdk_graph_from_db(
+                graph,
+                execution_options={"parallel_executor": "grpc_worker_pool"},
+            )
+
+    def test_serialize_runtime_edge_stores_remote_cpp_executor_spec(self):
+        morph_func = build_executor_function(
+            executor="remote_cpp",
+            operation="sin",
+            input_key="angles",
+            output_key="sin_angles",
+        )
+        runtime_edge = RuntimeEdge(
+            Func(),
+            Func(module="comsdk.executors", name=morph_func.__name__, func=morph_func),
+        )
+
+        edge_ir = serialize_runtime_edge(runtime_edge)
+
+        self.assertEqual(edge_ir["executor_type"], "remote_cpp")
+        self.assertEqual(edge_ir["executor_operation"], "sin")
+        self.assertEqual(edge_ir["executor_input_key"], "angles")
+        self.assertEqual(edge_ir["executor_output_key"], "sin_angles")
+
+    def test_runtime_builder_executes_stored_db_ir(self):
+        graph = Graph.objects.create(name="db_ir_graph")
+        begin = State.objects.create(name="__BEGIN__", graph=graph)
+        step = State.objects.create(name="STEP", graph=graph)
+        end = State.objects.create(name="__END__", graph=graph, is_terminal=True)
+        first_edge = Edge.objects.create(
+            comment="increment",
+            pred_module="",
+            pred_func="",
+            morph_module="test_funcs.simplest",
+            morph_func="increment_a_edge",
+        )
+        final_edge = Edge.objects.create(
+            comment="finish",
+            pred_module="",
+            pred_func="",
+            morph_module="",
+            morph_func="",
+        )
+        Transfer.objects.create(
+            source=begin,
+            target=step,
+            edge=first_edge,
+            graph=graph,
+            order=0,
+        )
+        Transfer.objects.create(
+            source=step,
+            target=end,
+            edge=final_edge,
+            graph=graph,
+            order=0,
+        )
+        session = GraphExecutionSession.objects.create(
+            graph=graph,
+            session_id="db-ir-session",
+            initial_data={"a": 1},
+        )
+
+        payload = {"a": 1}
+        with patch("config.tasks.publish_execution_ws_event"):
+            execute_graph_task.run(graph.id, "db-ir-session", payload)
+
+        session.refresh_from_db()
+        self.assertEqual(session.status, GraphExecutionSession.STATUS_COMPLETED)
+        self.assertGreaterEqual(session.event_count, 1)
+        self.assertEqual(payload["a"], 2)
+
+    def test_runtime_builder_executes_stored_remote_cpp_executor(self):
+        graph = Graph.objects.create(name="db_ir_remote_cpp_graph")
+        begin = State.objects.create(name="__BEGIN__", graph=graph)
+        end = State.objects.create(name="__END__", graph=graph, is_terminal=True)
+        edge = Edge.objects.create(
+            comment="remote sin",
+            pred_module="",
+            pred_func="",
+            morph_module="comsdk.executors",
+            morph_func="remote_cpp_sin",
+            executor_type="remote_cpp",
+            executor_operation="sin",
+            executor_input_key="x",
+            executor_output_key="sin_x",
+        )
+        Transfer.objects.create(
+            source=begin,
+            target=end,
+            edge=edge,
+            graph=graph,
+            order=0,
+        )
+        session = GraphExecutionSession.objects.create(
+            graph=graph,
+            session_id="db-ir-remote-cpp-session",
+            initial_data={"x": [0.0, 1.0]},
+        )
+
+        def fake_execute_remote_cpp(data, operation, input_key, output_key):
+            data[output_key] = {
+                "operation": operation,
+                "values": data[input_key],
+            }
+            return data
+
+        payload = {"x": [0.0, 1.0]}
+        with patch("comsdk.executors.execute_remote_cpp", side_effect=fake_execute_remote_cpp):
+            with patch("config.tasks.publish_execution_ws_event"):
+                execute_graph_task.run(graph.id, session.session_id, payload)
+
+        session.refresh_from_db()
+        self.assertEqual(session.status, GraphExecutionSession.STATUS_COMPLETED)
+        self.assertEqual(
+            payload["sin_x"],
+            {"operation": "sin", "values": [0.0, 1.0]},
+        )
+
+    def test_runtime_builder_supports_legacy_remote_cpp_morph_name(self):
+        graph = Graph.objects.create(name="db_ir_legacy_remote_cpp_graph")
+        begin = State.objects.create(name="__BEGIN__", graph=graph)
+        end = State.objects.create(name="__END__", graph=graph, is_terminal=True)
+        edge = Edge.objects.create(
+            comment="legacy remote sin",
+            pred_module="",
+            pred_func="",
+            morph_module="comsdk.executors",
+            morph_func="remote_cpp_sin",
+        )
+        Transfer.objects.create(
+            source=begin,
+            target=end,
+            edge=edge,
+            graph=graph,
+            order=0,
+        )
+        session = GraphExecutionSession.objects.create(
+            graph=graph,
+            session_id="db-ir-legacy-remote-cpp-session",
+            initial_data={"x": [0.0, 1.0]},
+        )
+
+        def fake_execute_remote_cpp(data, operation, input_key, output_key):
+            data[output_key] = {
+                "operation": operation,
+                "values": data[input_key],
+            }
+            return data
+
+        payload = {"x": [0.0, 1.0]}
+        with patch("comsdk.executors.execute_remote_cpp", side_effect=fake_execute_remote_cpp):
+            with patch("config.tasks.publish_execution_ws_event"):
+                execute_graph_task.run(graph.id, session.session_id, payload)
+
+        self.assertEqual(
+            payload["sin_result"],
+            {"operation": "sin", "values": [0.0, 1.0]},
+        )
+
     @patch("config.tasks.publish_execution_ws_event")
     @patch("config.tasks.record_execution_events")
-    @patch("config.tasks.Parser")
+    @patch("config.tasks.build_comsdk_graph_from_db")
     def test_false_graph_result_marks_task_as_failed(
         self,
-        parser_class,
+        build_graph,
         record_events,
         publish_event,
     ):
+        stored_graph = Graph.objects.create(name="BROKEN_GRAPH")
         graph = MagicMock()
-        graph.states = []
         graph.run.return_value = False
-
-        parser = parser_class.return_value
-        parser.fact.name = "BROKEN_GRAPH"
-        parser.parse_file.return_value = graph
+        build_graph.return_value = graph
 
         with self.assertRaisesMessage(RuntimeError, "Graph execution failed"):
             execute_graph_task.run(
-                "digraph BROKEN_GRAPH { __BEGIN__ -> __END__ }",
+                stored_graph.id,
                 "failed-session",
                 {},
             )

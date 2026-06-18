@@ -24,10 +24,21 @@
 -theta_max=[90; 0:90; 1] [[deg]] // Maximum fiber orientation angle
 
 [PARALLELISM] // Graph-runtime parallel execution settings
--parallel_executor=[threading]{threading|serial|grpc_worker_pool} // Current executor type
+-parallel_executor=[threading]{threading|serial} // Graph branch execution mode; remote C++ is selected by executor=remote_cpp in aDOT
 -worker_scope=[local_celery_process]{local_celery_process|remote_worker_pool} // Current worker placement
 -particle_shards=[4; 4:4; 1] // Static shard count in composite_pso.adot
 -parallel_workers={local-thread-0; local-thread-1; local-thread-2; local-thread-3} // Visible logical workers for PSO shards
+
+[REMOTE_CPP]
+-cpp_workers={http://cpp-worker-1:9000; http://cpp-worker-2:9000}
+-load_balancing=[least_in_flight]{round_robin|least_in_flight}
+-timeout_ms=[30000; 100:120000; 100]
+-retries=[1; 0:5; 1]
+
+[HOMOGENIZATION_BENCHMARK]
+-matrix_size=[512; 64:4096; 64]
+-matrix_work_repeats=[2; 1:50; 1]
+-matrix_correction_weight=[0.0; 0:1; 0.001]
 
 [OUTPUT] // Result persistence settings
 -output_filename=[composite_pso_result.json] // Result file name

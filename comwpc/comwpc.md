@@ -6,6 +6,9 @@
 `comsdk`, как поддерживает aDOT/aINI, что реально сохраняется в БД, как устроен запуск
 графа и какие части пока являются частичными или legacy.
 
+Для более наглядного чтения моделей, таблиц БД и функций см.
+[`comwpc_visual_map.md`](./comwpc_visual_map.md).
+
 Сверка сделана по:
 
 - `comwpc/models.py`, `comwpc/views.py`, `comwpc/graph_payloads.py`.
@@ -32,8 +35,10 @@
 - сохранение истории запусков;
 - legacy/admin SVG-визуализация через Graphviz.
 
-Важно: `comwpc` не исполняет граф сам. При запуске он заново передает `raw_dot` в
-`comsdk.Parser`, получает runtime-граф `comsdk.Graph` и вызывает `comsdk_graph.run(data)`.
+Важно: `comwpc` не исполняет граф сам. При импорте он один раз использует
+`comsdk.Parser`, материализует результат в таблицы `Graph`/`State`/`Edge`/`Transfer`,
+а при запуске собирает runtime-граф `comsdk.Graph` уже из БД и вызывает
+`comsdk_graph.run(data)`. `raw_dot` остается исходником для аудита и повторного импорта.
 
 ## 2. Модель данных
 
@@ -44,6 +49,10 @@
 - `name` - имя из `digraph`.
 - `raw_dot` - исходный текст импортированного aDOT/DOT.
 - `raw_aini` - исходный текст aINI, хранится только на основном графе.
+- `source_hash` - SHA-256 исходного `raw_dot`.
+- `parser_version` - версия/идентификатор parser-слоя, которым создан IR.
+- `ir_version` - версия сохраненного DB IR.
+- `parse_warnings` - предупреждения импорта в JSON-формате.
 - `parent_graph` - связь подграфа с родителем.
 - `is_subgraph` - признак подграфа.
 
@@ -61,21 +70,30 @@
 - `subgraph` - ссылка на `Graph`, если состояние является узлом-подграфом;
 - `comment`;
 - `array_keys_mapping`;
-- `is_subgraph_node`.
+- `is_subgraph_node`;
+- `selector_module`, `selector_func`;
+- `parallelism`;
+- `runtime_attrs`.
 
-Не хранятся:
+Не хранятся как отдельные нормализованные поля:
 
-- selector состояния;
-- policy `parallelism=threading`;
 - полная информация о количестве входов/looped edges из runtime.
 
 ### Edge и Transfer
 
-`Edge` хранит только:
+`Edge` хранит:
 
 - `comment`;
 - `pred_module`, `pred_func`;
-- `morph_module`, `morph_func`.
+- `morph_module`, `morph_func`;
+- `executor_type`, `executor_operation`, `executor_input_key`, `executor_output_key`;
+- `executor_options`;
+- `keys_mapping`;
+- `relative_keys`;
+- `default_relative_key`;
+- `mandatory_keys`;
+- `use_proxy_data_for_pre_post_processing`;
+- `runtime_attrs`.
 
 `Transfer` хранит:
 
@@ -83,17 +101,15 @@
 - `target`;
 - `edge`;
 - `order`;
-- `graph`.
+- `graph`;
+- `arrow_type`;
+- `runtime_attrs`.
 
-Не хранятся:
+Не хранятся или пока не восстанавливаются как полноценное поведение:
 
-- исходный тип стрелки `->` или `=>`;
-- `selector`;
-- `keys_mapping`;
 - `preprocessor`, `postprocessor`;
 - `connection_data`, `executable_parameters`;
-- executor-параметры кроме того, что итоговая runtime-функция может попасть в
-  `morph_module/morph_func`.
+- legacy remote/SSH communication и `ExecutableProgramEdge`.
 
 ## 3. Импорт aDOT и подграфов
 
@@ -123,9 +139,8 @@
 
 Ограничения импорта:
 
-- импорт сохраняет состояние БД как представление для просмотра, а не как полноценный
-  исполняемый IR;
-- execution всегда использует `Graph.raw_dot`, а не пересобирает runtime из таблиц БД;
+- импорт теперь сохраняет исполняемый DB IR, достаточный для сборки `comsdk.Graph`
+  без повторного парсинга `raw_dot`;
 - повторный импорт основного графа с тем же именем не обновляет существующий граф;
 - подграфы переиспользуются по имени и не обновляются автоматически;
 - service states `__BEGIN__` и `__END__` сохраняются в БД, но скрываются в JSON payload;
@@ -201,7 +216,7 @@ React получает эту схему через payload графа и пок
 1. `parse_execution_request_data(request)`;
 2. `prepare_execution_initial_data(graph, request_data)`;
 3. `create_execution_session(..., initial_data=initial_data)`;
-4. `execute_graph_task.delay(graph.raw_dot, session_id, initial_data)`.
+4. `execute_graph_task.delay(graph.id, session_id, initial_data)`.
 
 Важное поведение: сервер не смешивает автоматически все default/runtime-значения из
 `build_initial_data(raw_aini)` в payload запуска. Если у графа есть `raw_aini`, сервер:
@@ -267,8 +282,8 @@ predicate-а не передаются.
 
 `execute_graph_task`:
 
-- создает временный `.adot` из `raw_dot`;
-- парсит его через `comsdk.Parser`;
+- получает `Graph` из БД по `graph_id`;
+- вызывает `build_comsdk_graph_from_db(graph)`;
 - регистрирует listener;
 - публикует события в Channels group `execution_<session_id>`;
 - сохраняет часть событий в историю;
@@ -378,13 +393,16 @@ Persisted event types:
 | --- | --- |
 | Импорт основного aDOT/DOT | Работает через `comsdk.Parser`. |
 | Optional загрузка `.aini` при импорте | Работает, валидируется и сохраняется в `Graph.raw_aini`. |
-| Хранение структуры графа в БД | Работает как представление для UI. |
+| Хранение структуры графа в БД | Работает как UI-представление и исполняемый DB IR. |
 | Рекурсивные подграфы | Частично работает через `subgraph` и `SUBGRAPH_BASE_DIR`. |
 | JSON API для списка/графа/deep-графа | Работает. |
 | aINI schema для формы запуска | Работает. |
 | Required-поля aINI при запуске | Работает. |
 | Типизация bool/int/float/select/number | Работает в пределах `execution_inputs.py`. |
-| Celery-запуск `comsdk` | Работает. |
+| Celery-запуск `comsdk` | Работает через восстановление runtime из DB IR. |
+| `executor=remote_cpp` в DB IR | Работает: executor-spec хранится в `Edge` и восстанавливается через `build_executor_function`. |
+| Legacy `morph_func=remote_cpp_*` | Есть fallback на `executor=remote_cpp` с дефолтными ключами `x`/`<operation>_result`. |
+| PostgreSQL-настройки | PostgreSQL выбран по умолчанию; `DB_ENGINE=sqlite` оставлен для локальных тестов. |
 | WebSocket live events | Работает через Channels group. |
 | История запусков и событий | Работает для `state_enter`, `complete`, `error`. |
 | React payload с подграфами и schema | Работает. |
@@ -400,8 +418,8 @@ Persisted event types:
 | aINI `set`/`array` | Парсятся | В UI сложные значения сериализуются строкой. |
 | Подграфы | Сохраняются как Graph + State.subgraph | Поиск относительных путей ограничен `SUBGRAPH_BASE_DIR`. |
 | События подграфов | Runtime observer проходит в `comsdk` | Helper `process_subgraphs` в Celery выглядит устаревшим. |
-| Визуализация параллельности | Можно увидеть структуру веток | `parallelism=threading` не хранится отдельным полем модели. |
-| Edge details | Хранятся module/func/comment | Не хранится selector, mapping, pre/post, стрелка `=>`. |
+| Визуализация параллельности | Можно увидеть структуру веток | `parallelism=threading` хранится в `State.parallelism`; UI пока показывает это ограниченно. |
+| Edge details | Хранятся module/func/comment/mapping/executor | Pre/post пока не восстанавливаются как поведение; стрелка `=>` хранится на `Transfer`, но runtime сейчас использует обычный `Transfer`. |
 
 ### Не поддерживается
 
@@ -413,7 +431,6 @@ Persisted event types:
 | `keys_mapping` из aDOT+aINI | Не создает `InOutMapping`. |
 | Server-side merge всех defaults из aINI при запуске | Omitted optional/default поля не попадают в `initial_data`. |
 | Обновление существующего основного графа при повторном импорте | Возвращается конфликт. |
-| Полное восстановление исполняемого graph runtime из БД | Запуск идет из `raw_dot`. |
 | Актуальный SSE live stream | Есть legacy endpoint, но текущий publisher использует WebSocket/Channels. |
 | Полное покрытие импорта/подграфов/WS тестами | Тесты есть в основном для aINI, запуска и истории. |
 

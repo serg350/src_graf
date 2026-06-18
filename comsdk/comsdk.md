@@ -7,6 +7,9 @@
 `comsdk` - это Python-слой, который превращает описание вычислительного графа в формате
 aDOT в исполняемый объект `Graph` и затем обходит его как граф состояний.
 
+Для наглядной карты классов, runtime-связей и функций см.
+[`comsdk_visual_map.md`](./comsdk_visual_map.md).
+
 Основные файлы:
 
 - `comsdk/parser.py` - регулярный парсер aDOT, сборка `Graph`, `State`, `Edge`, `Func`,
@@ -211,6 +214,9 @@ SIN [executor=remote_cpp, operation=sin, input_key=x, output_key=sin_x]
 ```
 
 `comsdk.executors.build_executor_function` поддерживает только `executor=remote_cpp`.
+Созданная функция получает служебный атрибут `_comsdk_executor_spec`, чтобы `comwpc`
+мог сохранить `executor/operation/input_key/output_key` в DB IR и потом восстановить
+тот же wrapper без повторного парсинга aDOT.
 `RemoteCppClient`:
 
 - нормализует список worker URL;

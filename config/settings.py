@@ -137,15 +137,45 @@ CHANNEL_LAYERS = {
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-        'OPTIONS': {
-            'timeout': 20,
-        },
+DATABASE_ENGINE = os.environ.get("DB_ENGINE", "postgresql").lower()
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+
+if DATABASE_ENGINE == "sqlite":
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": os.environ.get("SQLITE_NAME", BASE_DIR / "db.sqlite3"),
+            "OPTIONS": {
+                "timeout": int(os.environ.get("SQLITE_TIMEOUT", "20")),
+            },
+        }
     }
-}
+else:
+    if DATABASE_URL:
+        database_url = urlparse(DATABASE_URL)
+        DATABASES = {
+            "default": {
+                "ENGINE": "django.db.backends.postgresql",
+                "NAME": database_url.path.lstrip("/"),
+                "USER": database_url.username or "",
+                "PASSWORD": database_url.password or "",
+                "HOST": database_url.hostname or "localhost",
+                "PORT": str(database_url.port or 5432),
+                "CONN_MAX_AGE": int(os.environ.get("DB_CONN_MAX_AGE", "60")),
+            }
+        }
+    else:
+        DATABASES = {
+            "default": {
+                "ENGINE": "django.db.backends.postgresql",
+                "NAME": os.environ.get("DB_NAME", "comwpc"),
+                "USER": os.environ.get("DB_USER", "comwpc"),
+                "PASSWORD": os.environ.get("DB_PASSWORD", "comwpc"),
+                "HOST": os.environ.get("DB_HOST", "localhost"),
+                "PORT": os.environ.get("DB_PORT", "5432"),
+                "CONN_MAX_AGE": int(os.environ.get("DB_CONN_MAX_AGE", "60")),
+            }
+        }
 
 
 # Password validation

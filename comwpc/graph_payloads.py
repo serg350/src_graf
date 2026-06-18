@@ -31,6 +31,10 @@ def build_graph_payload(graph, include_subgraphs: bool = False):
                 "comment": state.comment or "",
                 "is_terminal": bool(getattr(state, "is_terminal", False)),
                 "subgraph": subgraph_id,
+                "selector_module": state.selector_module or "",
+                "selector_func": state.selector_func or "",
+                "parallelism": state.parallelism or "",
+                "runtime_attrs": state.runtime_attrs or {},
             }
         )
 
@@ -46,6 +50,35 @@ def build_graph_payload(graph, include_subgraphs: bool = False):
                 "target": str(transfer.target.id),
                 "label": (transfer.edge.comment if transfer.edge else "") or "",
                 "comment": (transfer.edge.comment if transfer.edge else "") or "",
+                "order": transfer.order,
+                "arrow_type": transfer.arrow_type or "->",
+                "pred_module": (transfer.edge.pred_module if transfer.edge else "") or "",
+                "pred_func": (transfer.edge.pred_func if transfer.edge else "") or "",
+                "morph_module": (transfer.edge.morph_module if transfer.edge else "") or "",
+                "morph_func": (transfer.edge.morph_func if transfer.edge else "") or "",
+                "executor_type": (transfer.edge.executor_type if transfer.edge else "") or "",
+                "executor_operation": (
+                    transfer.edge.executor_operation if transfer.edge else ""
+                )
+                or "",
+                "executor_input_key": (
+                    transfer.edge.executor_input_key if transfer.edge else ""
+                )
+                or "",
+                "executor_output_key": (
+                    transfer.edge.executor_output_key if transfer.edge else ""
+                )
+                or "",
+                "executor_options": (
+                    transfer.edge.executor_options if transfer.edge else {}
+                )
+                or {},
+                "keys_mapping": (transfer.edge.keys_mapping if transfer.edge else {}) or {},
+                "mandatory_keys": (
+                    transfer.edge.mandatory_keys if transfer.edge else []
+                )
+                or [],
+                "runtime_attrs": transfer.runtime_attrs or {},
             }
         )
 

@@ -5,28 +5,88 @@
   "target_E": 120.0,
   "best_Vf": 0.5173234719438266,
   "best_theta_deg": 3.963984828489945,
-  "best_E_effective": 119.59118291876794,
+  "best_E_effective": 119.6212499527503,
   "best_density": 1.5103940831662959,
-  "best_modulus_error": 0.4088170812320584,
-  "best_score": 0.4107973770737436,
+  "best_modulus_error": 0.37875004724969585,
+  "best_score": 0.38073034309138104,
+  "best_matrix_benchmark": {
+    "correction": 0.030067033982361567,
+    "dense_entries": 16777216,
+    "elapsed_ms": 392.989205,
+    "matrix_bytes": 134217728,
+    "response": 1.7686490577859744,
+    "size": 4096,
+    "storage": "full_dense",
+    "work_repeats": 4
+  },
+  "shard_metrics": {
+    "0": {
+      "worker_id": "cpp-worker-1",
+      "operation": "pso_evaluate_shard",
+      "elapsed_ms": 3545.46152,
+      "shard_index": 0,
+      "result_count": 8
+    },
+    "1": {
+      "worker_id": "cpp-worker-1",
+      "operation": "pso_evaluate_shard",
+      "elapsed_ms": 3530.80886,
+      "shard_index": 1,
+      "result_count": 8
+    },
+    "2": {
+      "worker_id": "cpp-worker-1",
+      "operation": "pso_evaluate_shard",
+      "elapsed_ms": 3603.888296,
+      "shard_index": 2,
+      "result_count": 8
+    },
+    "3": {
+      "worker_id": "cpp-worker-1",
+      "operation": "pso_evaluate_shard",
+      "elapsed_ms": 3363.907021,
+      "shard_index": 3,
+      "result_count": 8
+    }
+  },
   "history": [
     {
       "iteration": 0,
-      "score": 4.816478315387578,
-      "modulus_error": 4.8141479393214155,
+      "score": 4.786664153114821,
+      "modulus_error": 4.7843337770486585,
       "Vf": 0.5056541311278976,
       "theta_deg": 6.519265800078848,
-      "E_effective": 115.18585206067858,
-      "density": 1.5033924786767385
+      "E_effective": 115.21566622295134,
+      "density": 1.5033924786767385,
+      "matrix_benchmark": {
+        "correction": 0.029814162272754036,
+        "dense_entries": 16777216,
+        "elapsed_ms": 562.964179,
+        "matrix_bytes": 134217728,
+        "response": 1.7537742513384726,
+        "size": 4096,
+        "storage": "full_dense",
+        "work_repeats": 4
+      }
     },
     {
       "iteration": 1,
-      "score": 0.4107973770737436,
-      "modulus_error": 0.4088170812320584,
+      "score": 0.38073034309138104,
+      "modulus_error": 0.37875004724969585,
       "Vf": 0.5173234719438266,
       "theta_deg": 3.963984828489945,
-      "E_effective": 119.59118291876794,
-      "density": 1.5103940831662959
+      "E_effective": 119.6212499527503,
+      "density": 1.5103940831662959,
+      "matrix_benchmark": {
+        "correction": 0.030067033982361567,
+        "dense_entries": 16777216,
+        "elapsed_ms": 392.989205,
+        "matrix_bytes": 134217728,
+        "response": 1.7686490577859744,
+        "size": 4096,
+        "storage": "full_dense",
+        "work_repeats": 4
+      }
     }
   ]
 }

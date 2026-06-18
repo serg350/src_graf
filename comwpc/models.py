@@ -8,6 +8,10 @@ class Graph(models.Model):
     is_subgraph = models.BooleanField(default=False)
     raw_dot = models.TextField(blank=True, null=True)
     raw_aini = models.TextField(blank=True, null=True)
+    source_hash = models.CharField(max_length=64, blank=True, default="")
+    parser_version = models.CharField(max_length=64, blank=True, default="")
+    ir_version = models.PositiveSmallIntegerField(default=1)
+    parse_warnings = models.JSONField(blank=True, default=list)
 
     class Meta:
         constraints = [
@@ -34,6 +38,10 @@ class State(models.Model):
     comment = models.TextField(blank=True)
     array_keys_mapping = models.JSONField(blank=True, null=True)
     is_subgraph_node = models.BooleanField(default=False)
+    selector_module = models.CharField(max_length=255, blank=True, default="")
+    selector_func = models.CharField(max_length=255, blank=True, default="")
+    parallelism = models.CharField(max_length=32, blank=True, default="")
+    runtime_attrs = models.JSONField(blank=True, default=dict)
 
     def __str__(self):
         """
@@ -50,6 +58,17 @@ class Edge(models.Model):
     pred_func = models.CharField(max_length=255)
     morph_module = models.CharField(max_length=255)
     morph_func = models.CharField(max_length=255)
+    executor_type = models.CharField(max_length=64, blank=True, default="")
+    executor_operation = models.CharField(max_length=64, blank=True, default="")
+    executor_input_key = models.CharField(max_length=255, blank=True, default="")
+    executor_output_key = models.CharField(max_length=255, blank=True, default="")
+    executor_options = models.JSONField(blank=True, default=dict)
+    keys_mapping = models.JSONField(blank=True, default=dict)
+    relative_keys = models.JSONField(blank=True, default=list)
+    default_relative_key = models.JSONField(blank=True, default=list)
+    mandatory_keys = models.JSONField(blank=True, default=list)
+    use_proxy_data_for_pre_post_processing = models.BooleanField(default=False)
+    runtime_attrs = models.JSONField(blank=True, default=dict)
 
     def __str__(self):
         """
@@ -67,6 +86,8 @@ class Transfer(models.Model):
     target = models.ForeignKey(State, on_delete=models.CASCADE, related_name='incoming')
     order = models.IntegerField(default=0)
     graph = models.ForeignKey(Graph, on_delete=models.CASCADE)  # Добавляем прямой ForeignKey
+    arrow_type = models.CharField(max_length=8, blank=True, default="->")
+    runtime_attrs = models.JSONField(blank=True, default=dict)
 
     class Meta:
         ordering = ['order']
