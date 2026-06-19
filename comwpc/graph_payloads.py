@@ -45,7 +45,7 @@ def build_graph_payload(graph, include_subgraphs: bool = False):
 
         edges.append(
             {
-                "id": f"{transfer.source.id}-{transfer.target.id}",
+                "id": str(transfer.id),
                 "source": str(transfer.source.id),
                 "target": str(transfer.target.id),
                 "label": (transfer.edge.comment if transfer.edge else "") or "",

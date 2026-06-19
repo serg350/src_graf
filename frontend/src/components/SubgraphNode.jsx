@@ -2,14 +2,44 @@ import React from "react";
 import { Handle, Position } from "reactflow";
 import { FolderTree } from "lucide-react";
 
-export default function SubgraphNode({ data }) {
+export default function SubgraphNode({
+  data,
+  targetPosition = Position.Left,
+  sourcePosition = Position.Right,
+}) {
+  const phase = data.execution?.phase;
+  const border =
+    phase === "failed"
+      ? "#dc2626"
+      : phase === "active"
+        ? "#f97316"
+        : phase === "waiting"
+          ? "#3b82f6"
+          : phase === "completed"
+            ? "#22c55e"
+            : "#d97706";
+  const background =
+    phase === "failed"
+      ? "#fff1f1"
+      : phase === "active"
+        ? "#fff7ed"
+        : phase === "waiting"
+          ? "#eff6ff"
+          : phase === "completed"
+            ? "#ecfdf3"
+            : "#fff4e5";
+
   return (
     <div
       title={data.comment || data.label}
       style={{
-        padding: data.comment ? "8px 12px" : "10px 14px",
-        background: "#fff4e5",
-        border: "2px solid #d97706",
+        width: "100%",
+        height: "100%",
+        minWidth: 210,
+        minHeight: 72,
+        padding: data.comment ? "9px 12px" : "14px",
+        background,
+        border: `2px solid ${border}`,
         borderRadius: 8,
         fontSize: 13,
         fontWeight: 600,
@@ -18,6 +48,8 @@ export default function SubgraphNode({ data }) {
         gap: 8,
         cursor: "pointer",
         position: "relative",
+        boxShadow: phase ? `0 0 0 3px ${border}24` : "0 1px 3px rgba(15, 23, 42, 0.1)",
+        transition: "background 160ms ease, border-color 160ms ease, box-shadow 160ms ease",
       }}
       onClick={(e) => {
         e.stopPropagation();
@@ -46,8 +78,12 @@ export default function SubgraphNode({ data }) {
         ) : null}
       </span>
 
-      <Handle type="target" position={Position.Left} id="in" style={{ background: "#d97706" }} />
-      <Handle type="source" position={Position.Right} id="out" style={{ background: "#d97706" }} />
+      {data.execution?.visits > 1 ? (
+        <span className="gv-node-visit-count">×{data.execution.visits}</span>
+      ) : null}
+
+      <Handle type="target" position={targetPosition} id="in" style={{ background: border }} />
+      <Handle type="source" position={sourcePosition} id="out" style={{ background: border }} />
     </div>
   );
 }

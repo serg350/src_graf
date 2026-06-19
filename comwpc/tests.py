@@ -175,6 +175,28 @@ class StartExecutionAINITests(TestCase):
         self.assertEqual(session.status, GraphExecutionSession.STATUS_PENDING)
         self.assertEqual(session.initial_data, payload)
 
+    @patch("comwpc.views.execute_graph_task.delay")
+    def test_start_execution_accepts_client_session_id(self, delay_mock):
+        graph = Graph.objects.create(
+            name="test_graph_client_session",
+            raw_dot="digraph Test { __BEGIN__ -> __END__ }",
+        )
+        session_id = "b5a27aba-aed8-4f0e-a380-dda68f072e45"
+        request = self.factory.post(
+            f"/graph/{graph.id}/start/",
+            data=json.dumps({"data": {}, "session_id": session_id}),
+            content_type="application/json",
+        )
+
+        response = start_execution(request, graph.id)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(json.loads(response.content)["session_id"], session_id)
+        self.assertTrue(
+            GraphExecutionSession.objects.filter(session_id=session_id).exists()
+        )
+        self.assertEqual(delay_mock.call_args.args[1], session_id)
+
 
 class ExecutionHistoryTests(TestCase):
     def setUp(self):
@@ -408,7 +430,7 @@ class ExecuteGraphTaskTests(TestCase):
             morph_module="",
             morph_func="",
         )
-        Transfer.objects.create(
+        first_transfer = Transfer.objects.create(
             source=begin,
             target=step,
             edge=first_edge,
@@ -434,7 +456,19 @@ class ExecuteGraphTaskTests(TestCase):
 
         session.refresh_from_db()
         self.assertEqual(session.status, GraphExecutionSession.STATUS_COMPLETED)
-        self.assertGreaterEqual(session.event_count, 1)
+        event_types = list(session.events.values_list("event_type", flat=True))
+        self.assertIn("edge_enter", event_types)
+        self.assertIn("edge_exit", event_types)
+        edge_event = session.events.get(
+            event_type="edge_enter",
+            raw_event__edge_id=str(first_transfer.id),
+        )
+        self.assertEqual(edge_event.raw_event["from_state"], "__BEGIN__")
+        self.assertEqual(edge_event.raw_event["to_state"], "STEP")
+        self.assertEqual(
+            list(session.events.values_list("sequence", flat=True)),
+            list(range(1, session.event_count + 1)),
+        )
         self.assertEqual(payload["a"], 2)
 
     def test_runtime_builder_executes_stored_remote_cpp_executor(self):

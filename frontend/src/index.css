@@ -213,3 +213,103 @@ a {
   background: #fff1f1;
   color: #b42318;
 }
+
+.gv-execution-status {
+  display: grid;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid #d7e1ec;
+  border-bottom: 1px solid #d7e1ec;
+  background: #ffffff;
+}
+
+.gv-execution-status-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.gv-execution-status-badge,
+.gv-execution-metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.gv-execution-metric {
+  border: 1px solid #d7e1ec;
+  background: #f8fbfd;
+}
+
+.gv-execution-error {
+  color: #b42318;
+  border-color: #ef9a9a;
+  background: #fff1f1;
+}
+
+.gv-active-operations {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.gv-active-operation {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 5px 9px;
+  border-left: 3px solid #f97316;
+  background: #fff7ed;
+  color: #7c2d12;
+  font-size: 11px;
+}
+
+.gv-active-operation span {
+  color: #9a3412;
+}
+
+.gv-node-status-dot {
+  position: absolute;
+  top: 7px;
+  left: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9);
+}
+
+.gv-node-visit-count {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  min-width: 24px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.gv-node-wait-count {
+  position: absolute;
+  right: 6px;
+  bottom: 4px;
+  color: #1d4ed8;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.react-flow__edge-label-renderer {
+  z-index: 4;
+}

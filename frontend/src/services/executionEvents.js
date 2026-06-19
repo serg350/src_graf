@@ -1,6 +1,6 @@
 import { connectExecutionWebSocket } from "./executionWebSocket";
 
-const DEFAULT_PLAYBACK_DELAY_MS = 0;
+const DEFAULT_PLAYBACK_DELAY_MS = 60;
 
 function getConfiguredPlaybackDelayMs() {
   const rawDelay = import.meta.env.VITE_EXECUTION_EVENT_DELAY_MS;
@@ -82,27 +82,33 @@ export function connectExecution(sessionId, onEvent, options = {}) {
   const playbackDelayMs =
     options.playbackDelayMs ?? getConfiguredPlaybackDelayMs();
   const playback = createPlaybackQueue(onEvent, playbackDelayMs);
-  let disconnectTransport = null;
+  let transport = null;
 
-  disconnectTransport = connectExecutionWebSocket(sessionId, (event) => {
-    if (event?.event === "error") {
-      playback.pushImmediate(event);
-      disconnectTransport?.();
-      disconnectTransport = null;
-      return;
-    }
+  transport = connectExecutionWebSocket(sessionId, {
+    afterSequence: options.afterSequence,
+    onEvent(event) {
+      if (event?.event === "error") {
+        playback.pushImmediate(event);
+        transport?.disconnect();
+        transport = null;
+        return;
+      }
 
-    playback.push(event);
+      playback.push(event);
 
-    if (isTerminalEvent(event)) {
-      disconnectTransport?.();
-      disconnectTransport = null;
-    }
+      if (isTerminalEvent(event)) {
+        transport?.disconnect();
+        transport = null;
+      }
+    },
   });
 
-  return () => {
-    disconnectTransport?.();
-    disconnectTransport = null;
-    playback.cancel();
+  return {
+    ready: transport.ready,
+    disconnect() {
+      transport?.disconnect();
+      transport = null;
+      playback.cancel();
+    },
   };
 }

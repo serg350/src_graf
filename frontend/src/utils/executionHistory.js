@@ -12,6 +12,7 @@ function toComparableTimestamp(value) {
 
 function normalizeEvent(event, index = 0) {
   return {
+    ...event,
     sequence: event.sequence ?? index + 1,
     event: event.event ?? "",
     state: event.state ?? "",

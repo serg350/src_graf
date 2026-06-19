@@ -40,7 +40,7 @@ from .runtime_ir import (
     serialize_runtime_edge,
     serialize_runtime_state,
 )
-from .models import Edge, Graph, State, Transfer
+from .models import Edge, Graph, GraphExecutionSession, State, Transfer
 
 
 def graph_deep_json(request, graph_id):
@@ -734,6 +734,21 @@ def start_execution(request, graph_id):
     """
     graph = get_object_or_404(Graph, pk=graph_id)
     session_id = str(uuid.uuid4())
+
+    if request.content_type and "application/json" in request.content_type:
+        try:
+            request_payload = json.loads(request.body.decode("utf-8") or "{}")
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            request_payload = {}
+        requested_session_id = request_payload.get("session_id")
+        if requested_session_id:
+            try:
+                session_id = str(uuid.UUID(str(requested_session_id)))
+            except (TypeError, ValueError, AttributeError):
+                return JsonResponse({"error": "session_id must be a valid UUID"}, status=400)
+
+    if GraphExecutionSession.objects.filter(session_id=session_id).exists():
+        return JsonResponse({"error": "Execution session already exists"}, status=409)
 
     try:
         request_data = _parse_execution_request_data(request)

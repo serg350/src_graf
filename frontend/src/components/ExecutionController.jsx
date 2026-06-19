@@ -4,6 +4,18 @@ import ExecutionStartModal from "./ExecutionStartModal";
 import { startExecution } from "../services/executionApi";
 import { connectExecution } from "../services/executionEvents";
 
+function createSessionId() {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (token) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = token === "x" ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+}
+
 function buildInitialFormValues(schema) {
   const values = {};
 
@@ -96,7 +108,7 @@ export default function ExecutionController({
 
   useEffect(
     () => () => {
-      disconnectRef.current?.();
+      disconnectRef.current?.disconnect();
     },
     []
   );
@@ -108,21 +120,34 @@ export default function ExecutionController({
     setIsStarting(true);
     setLaunchError("");
 
-    disconnectRef.current?.();
+    disconnectRef.current?.disconnect();
+
+    const sessionId = createSessionId();
+    onSessionStarted?.({
+      sessionId,
+      initialData: payload,
+    });
 
     try {
-      const { session_id } = await startExecution(graphId, payload);
-      onSessionStarted?.({
-        sessionId: session_id,
-        initialData: payload,
-      });
-      disconnectRef.current = connectExecution(session_id, (event) => {
+      const connection = connectExecution(sessionId, (event) => {
         onStateEvent(event);
       });
+      disconnectRef.current = connection;
+      await connection.ready;
+
+      await startExecution(graphId, payload, sessionId);
       setIsDialogOpen(false);
       setFormError("");
     } catch (error) {
       const message = error.message || "Не удалось запустить обход";
+      disconnectRef.current?.disconnect();
+      disconnectRef.current = null;
+      onStateEvent({
+        event: "error",
+        message,
+        session_id: sessionId,
+        timestamp: Date.now() / 1000,
+      });
       setLaunchError(message);
 
       if (hasInputs) {

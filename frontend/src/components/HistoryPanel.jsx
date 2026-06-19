@@ -23,7 +23,12 @@ const STATUS_META = {
 
 const EVENT_LABELS = {
   state_enter: "Вход в состояние",
+  state_wait: "Ожидание входных веток",
+  state_ready: "Состояние готово",
   state_exit: "Выход из состояния",
+  edge_enter: "Запуск перехода",
+  edge_exit: "Переход завершён",
+  edge_error: "Ошибка перехода",
   complete: "Завершение",
   error: "Ошибка",
 };
@@ -181,12 +186,19 @@ export default function HistoryPanel({ sessions, isLoading, error }) {
             </div>
 
             {Object.keys(session.initial_data || {}).length > 0 ? (
-              <div style={{ display: "grid", gap: 8 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#5f7184" }}>
+              <details>
+                <summary
+                  style={{
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: "#5f7184",
+                  }}
+                >
                   Входные параметры
-                </div>
-                {renderJsonBlock(session.initial_data)}
-              </div>
+                </summary>
+                <div style={{ marginTop: 8 }}>{renderJsonBlock(session.initial_data)}</div>
+              </details>
             ) : null}
 
             {session.error_message ? (
@@ -252,14 +264,48 @@ export default function HistoryPanel({ sessions, isLoading, error }) {
                     </div>
 
                     <div style={{ fontSize: 12, color: "#5f7184" }}>
-                      Состояние: {event.state || "—"}
+                      {event.from_state || event.to_state
+                        ? `Переход: ${event.from_state || "—"} → ${event.to_state || "—"}`
+                        : `Состояние: ${event.state || "—"}`}
                     </div>
+
+                    {event.executor_operation ||
+                    event.worker_id ||
+                    event.duration_ms !== undefined ? (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {event.executor_operation ? (
+                          <span className="gv-chip">{event.executor_operation}</span>
+                        ) : null}
+                        {event.worker_id ? (
+                          <span className="gv-chip">{event.worker_id}</span>
+                        ) : null}
+                        {event.duration_ms !== undefined ? (
+                          <span className="gv-chip">
+                            {Number(event.duration_ms).toFixed(1)} ms
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : null}
 
                     {event.message ? (
                       <div style={{ fontSize: 12, color: "#b42318" }}>{event.message}</div>
                     ) : null}
 
-                    {renderJsonBlock(event.data)}
+                    {event.data && Object.keys(event.data).length > 0 ? (
+                      <details>
+                        <summary
+                          style={{
+                            cursor: "pointer",
+                            color: "#5f7184",
+                            fontSize: 11,
+                            fontWeight: 700,
+                          }}
+                        >
+                          Снимок данных
+                        </summary>
+                        <div style={{ marginTop: 8 }}>{renderJsonBlock(event.data)}</div>
+                      </details>
+                    ) : null}
                   </div>
                 ))
               )}

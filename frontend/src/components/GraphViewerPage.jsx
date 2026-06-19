@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import { GitBranch, Settings } from "lucide-react";
 import { useParams } from "react-router-dom";
 
@@ -12,6 +12,10 @@ import {
   mergeSessionStart,
   normalizeExecutionSession,
 } from "../utils/executionHistory";
+import {
+  createExecutionState,
+  executionReducer,
+} from "../utils/executionState";
 import ExecutionController from "./ExecutionController";
 
 function ViewerToolbar({
@@ -110,7 +114,11 @@ export default function GraphViewerPage() {
   const { id } = useParams();
   const [orientation, setOrientation] = useState("LR");
   const [showSubgraphs, setShowSubgraphs] = useState(true);
-  const [executionEvent, setExecutionEvent] = useState(null);
+  const [executionState, dispatchExecution] = useReducer(
+    executionReducer,
+    undefined,
+    createExecutionState
+  );
   const [historySessions, setHistorySessions] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState("");
@@ -127,7 +135,7 @@ export default function GraphViewerPage() {
     setHistoryLoading(true);
     setHistoryError("");
     setHistorySessions([]);
-    setExecutionEvent(null);
+    dispatchExecution({ type: "reset", sessionId: null });
 
     loadGraphExecutionHistory(id)
       .then((sessions) => {
@@ -156,6 +164,7 @@ export default function GraphViewerPage() {
   }, [id]);
 
   const handleSessionStarted = ({ sessionId, initialData }) => {
+    dispatchExecution({ type: "reset", sessionId });
     setHistorySessions((current) =>
       mergeSessionStart(
         current,
@@ -165,7 +174,7 @@ export default function GraphViewerPage() {
   };
 
   const handleStateEvent = (event) => {
-    setExecutionEvent(event);
+    dispatchExecution({ type: "event", event });
     setHistorySessions((current) => mergeExecutionEvent(current, event));
   };
 
@@ -191,7 +200,7 @@ export default function GraphViewerPage() {
         graphId={id}
         orientation={orientation}
         showSubgraphs={showSubgraphs}
-        executionEvent={executionEvent}
+        executionState={executionState}
         onGraphMeta={setGraphMeta}
         executionControls={
           <ExecutionController

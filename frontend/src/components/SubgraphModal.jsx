@@ -21,6 +21,7 @@ export default function SubgraphModal({
   onOpenSubgraph,
   graph,
   breadcrumb = [],
+  executionState,
 }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -36,8 +37,10 @@ export default function SubgraphModal({
       id: String(node.id),
       draggable: true,
       data: {
+        ...node,
         label: node.label,
         comment: node.comment || "",
+        stateId: node.label,
         subgraphId: node.subgraph,
         onOpenSubgraph,
       },
@@ -51,7 +54,19 @@ export default function SubgraphModal({
       target: String(edge.target),
       label: edge.label || "",
       data: {
+        ...edge,
+        edgeId: String(edge.id),
+        edgeOrder: edge.order ?? 0,
+        fromState: (graph.nodes || []).find(
+          (node) => String(node.id) === String(edge.source)
+        )?.label,
+        toState: (graph.nodes || []).find(
+          (node) => String(node.id) === String(edge.target)
+        )?.label,
         comment: edge.comment || edge.label || "",
+        executorType: edge.executor_type || "",
+        executorOperation: edge.executor_operation || "",
+        orientation: "LR",
       },
       markerEnd: "arrowclosed",
     }));
@@ -69,16 +84,62 @@ export default function SubgraphModal({
         draggable: true,
       }))
     );
+    let backLane = 0;
     setEdges(
-      layoutedEdges.map((edge) => ({
-        ...edge,
-        id: String(edge.id),
-        source: String(edge.source),
-        target: String(edge.target),
-        markerEnd: edge.markerEnd || "arrowclosed",
-      }))
+      layoutedEdges.map((edge) => {
+        const sourceNode = layoutedNodes.find(
+          (node) => String(node.id) === String(edge.source)
+        );
+        const targetNode = layoutedNodes.find(
+          (node) => String(node.id) === String(edge.target)
+        );
+        const isBackEdge = sourceNode?.position.x >= targetNode?.position.x;
+        return {
+          ...edge,
+          id: String(edge.id),
+          source: String(edge.source),
+          target: String(edge.target),
+          type: "default",
+          data: {
+            ...edge.data,
+            isBackEdge,
+            routingLane: isBackEdge ? backLane++ : 0,
+          },
+        };
+      })
     );
   }, [graph, onOpenSubgraph]);
+
+  useEffect(() => {
+    setNodes((currentNodes) =>
+      currentNodes.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          execution: executionState?.nodes?.[node.data?.stateId] || null,
+        },
+      }))
+    );
+
+    setEdges((currentEdges) =>
+      currentEdges.map((edge) => ({
+        ...edge,
+        data: {
+          ...edge.data,
+          execution:
+            executionState?.edges?.[String(edge.data?.edgeId)] ||
+            executionState?.edges?.[
+              [
+                edge.data?.fromState || "",
+                edge.data?.toState || "",
+                edge.data?.edgeOrder ?? 0,
+              ].join("->")
+            ] ||
+            null,
+        },
+      }))
+    );
+  }, [executionState, setEdges, setNodes]);
 
   if (!open) {
     return null;

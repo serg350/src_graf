@@ -11,8 +11,7 @@ from comwpc.runtime_ir import build_comsdk_graph_from_db
 
 logger = logging.getLogger(__name__)
 
-HISTORY_EVENT_BATCH_SIZE = 25
-PERSISTED_EXECUTION_EVENT_TYPES = {"state_enter", "complete", "error"}
+HISTORY_EVENT_BATCH_SIZE = 1
 
 
 def _normalize_graph_id(graph_id):
@@ -43,6 +42,7 @@ def publish_execution_ws_event(session_id, event):
 def execute_graph_task(graph_id, session_id, initial_data):
     listener_lock = threading.Lock()
     history_event_buffer = []
+    event_sequence = 0
 
     def flush_history_events():
         if not history_event_buffer:
@@ -59,15 +59,18 @@ def execute_graph_task(graph_id, session_id, initial_data):
         )
 
         def event_listener(event):
+            nonlocal event_sequence
             with listener_lock:
+                event_sequence += 1
+                event = event.copy()
+                event["sequence"] = event_sequence
                 event["graph_id"] = stored_graph.name
                 event["graph_pk"] = stored_graph.pk
                 event["session_id"] = session_id
                 publish_execution_ws_event(session_id, event)
 
                 event_type = str(event.get("event") or "")
-                if event_type in PERSISTED_EXECUTION_EVENT_TYPES:
-                    history_event_buffer.append(event.copy())
+                history_event_buffer.append(event.copy())
                 if (
                     len(history_event_buffer) >= HISTORY_EVENT_BATCH_SIZE
                     or event_type in {"complete", "error"}
@@ -81,10 +84,12 @@ def execute_graph_task(graph_id, session_id, initial_data):
                 str(initial_data.get("__EXCEPTION__") or "Graph execution failed")
             )
     except Exception as exc:
+        event_sequence += 1
         error_event = {
             "event": "error",
             "message": str(exc),
             "session_id": session_id,
+            "sequence": event_sequence,
         }
         with listener_lock:
             publish_execution_ws_event(session_id, error_event)

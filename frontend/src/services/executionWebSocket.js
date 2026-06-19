@@ -8,28 +8,81 @@ function buildWebSocketUrl(path) {
   return url.toString();
 }
 
-export function connectExecutionWebSocket(sessionId, onEvent) {
-  const ws = new WebSocket(
-    buildWebSocketUrl(`/ws/execution/${sessionId}/`)
-  );
+export function connectExecutionWebSocket(sessionId, handlers = {}) {
+  let socket = null;
+  let reconnectTimer = null;
+  let closed = false;
+  let connectedOnce = false;
+  let lastSequence = Number(handlers.afterSequence) || 0;
+  let resolveReady;
+  let rejectReady;
 
-  ws.onopen = () => {
-    ws.send(JSON.stringify({ type: "ping" }));
+  const ready = new Promise((resolve, reject) => {
+    resolveReady = resolve;
+    rejectReady = reject;
+  });
+
+  const connect = () => {
+    const url = new URL(
+      buildWebSocketUrl(`/ws/execution/${sessionId}/`)
+    );
+    url.searchParams.set("after", String(lastSequence));
+    socket = new WebSocket(url.toString());
+
+    socket.onmessage = (message) => {
+      const event = JSON.parse(message.data);
+
+      if (event.type === "connected") {
+        if (!connectedOnce) {
+          connectedOnce = true;
+          resolveReady();
+        }
+        handlers.onConnected?.();
+        return;
+      }
+
+      if (event.type === "pong") {
+        return;
+      }
+
+      const sequence = Number(event.sequence) || 0;
+      if (sequence > 0) {
+        lastSequence = Math.max(lastSequence, sequence);
+      }
+      handlers.onEvent?.(event);
+    };
+
+    socket.onerror = (error) => {
+      console.error("WebSocket error", error);
+      handlers.onError?.(error);
+    };
+
+    socket.onclose = () => {
+      socket = null;
+      if (closed) {
+        return;
+      }
+
+      if (!connectedOnce) {
+        rejectReady(new Error("Не удалось подключиться к потоку событий выполнения"));
+        return;
+      }
+
+      reconnectTimer = window.setTimeout(connect, 500);
+    };
   };
 
-  ws.onmessage = (message) => {
-    const event = JSON.parse(message.data);
+  connect();
 
-    if (event.type === "connected" || event.type === "pong") {
-      return;
-    }
-
-    onEvent(event);
+  return {
+    ready,
+    disconnect() {
+      closed = true;
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer);
+      }
+      socket?.close();
+      socket = null;
+    },
   };
-
-  ws.onerror = (error) => {
-    console.error("WebSocket error", error);
-  };
-
-  return () => ws.close();
 }

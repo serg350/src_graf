@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import ReactFlow, {
   Background,
   Controls,
@@ -13,25 +13,13 @@ import { flattenGraphWithSubgraphs } from "../utils/graph_parser";
 import { applyDagreLayout } from "../utils/dagreLayout";
 
 import CustomEdge from "./CustomEdge";
+import ExecutionStatusBar from "./ExecutionStatusBar";
 import GraphNode from "./GraphNode";
 import SubgraphModal from "./SubgraphModal";
 import SubgraphNode from "./SubgraphNode";
 
 const NODE_TYPES = { graph: GraphNode, subgraph: SubgraphNode };
 const EDGE_TYPES = { default: CustomEdge };
-
-function getBaseNodeStyle(nodeType) {
-  if (nodeType === "graph" || nodeType === "subgraph") {
-    return {};
-  }
-
-  return {
-    border: "1px solid #94a3b8",
-    background: "#ffffff",
-    borderRadius: 10,
-    transition: "all 0.2s ease",
-  };
-}
 
 function findSubgraphById(graph, targetId, breadcrumb = []) {
   if (!graph) {
@@ -58,8 +46,6 @@ function buildFlowState(rootGraph, orientation, showSubgraphs, handleOpenSubgrap
   const dagre = applyDagreLayout(flat.nodes, flat.edges, orientation);
 
   const nodes = dagre.nodes.map((node) => {
-    const baseStyle = getBaseNodeStyle(node.type);
-
     return {
       ...node,
       id: String(node.id),
@@ -68,16 +54,27 @@ function buildFlowState(rootGraph, orientation, showSubgraphs, handleOpenSubgrap
       data: {
         ...node.data,
         stateId: node.data?.label,
-        baseStyle,
         onOpenSubgraph: handleOpenSubgraph,
       },
-      style: baseStyle,
+      style: {
+        width: node.width,
+        height: node.height,
+      },
     };
   });
 
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  let backwardLane = 0;
   const edges = dagre.edges.map((edge) => {
-    const from = nodes.find((node) => node.id === String(edge.source))?.data.stateId;
-    const to = nodes.find((node) => node.id === String(edge.target))?.data.stateId;
+    const sourceNode = nodeById.get(String(edge.source));
+    const targetNode = nodeById.get(String(edge.target));
+    const from = sourceNode?.data.stateId;
+    const to = targetNode?.data.stateId;
+    const isBackEdge =
+      orientation === "LR"
+        ? sourceNode?.position.x >= targetNode?.position.x
+        : sourceNode?.position.y >= targetNode?.position.y;
+    const routingLane = isBackEdge ? backwardLane++ : 0;
 
     return {
       id: String(edge.id),
@@ -88,8 +85,15 @@ function buildFlowState(rootGraph, orientation, showSubgraphs, handleOpenSubgrap
       data: {
         fromState: from,
         toState: to,
+        edgeId: String(edge.id),
+        edgeOrder: edge.order ?? 0,
         comment: edge.comment || edge.label || "",
-        active: false,
+        executorType: edge.executor_type || "",
+        executorOperation: edge.executor_operation || "",
+        orientation,
+        isBackEdge,
+        routingLane,
+        execution: null,
       },
     };
   });
@@ -97,15 +101,35 @@ function buildFlowState(rootGraph, orientation, showSubgraphs, handleOpenSubgrap
   return { nodes, edges };
 }
 
-function getEdgeKey(fromState, toState) {
-  return `${fromState || ""}->${toState || ""}`;
+function getNodeExecution(node, executionState) {
+  const direct = executionState?.nodes?.[node.data?.stateId];
+  if (direct) {
+    return direct;
+  }
+
+  const descendants = node.data?.descendantStates || [];
+  const states = descendants
+    .map((name) => executionState?.nodes?.[name])
+    .filter(Boolean);
+  const priority = ["failed", "active", "waiting", "completed"];
+  const phase = priority.find((candidate) =>
+    states.some((state) => state.phase === candidate)
+  );
+  if (!phase) {
+    return null;
+  }
+
+  return {
+    phase,
+    visits: states.reduce((total, state) => total + (state.visits || 0), 0),
+  };
 }
 
 export default function GraphView({
   graphId,
   orientation = "TB",
   showSubgraphs = true,
-  executionEvent,
+  executionState,
   executionControls,
   onGraphMeta,
   children,
@@ -118,11 +142,9 @@ export default function GraphView({
     breadcrumb: [],
   });
 
-  const activeStatesRef = useRef(new Set());
-  const activeEdgesRef = useRef(new Set());
   const rootGraphRef = useRef(null);
 
-  const handleOpenSubgraph = (subgraphId) => {
+  const handleOpenSubgraph = useCallback((subgraphId) => {
     const match = findSubgraphById(rootGraphRef.current, subgraphId);
     if (!match) {
       return;
@@ -133,7 +155,7 @@ export default function GraphView({
       graph: match.graph,
       breadcrumb: match.breadcrumb,
     });
-  };
+  }, []);
 
   useEffect(() => {
     let isActive = true;
@@ -145,8 +167,6 @@ export default function GraphView({
         }
 
         rootGraphRef.current = rootGraph;
-        activeStatesRef.current = new Set();
-        activeEdgesRef.current = new Set();
         setModalState({ open: false, graph: null, breadcrumb: [] });
         onGraphMeta?.({
           isLoaded: true,
@@ -174,65 +194,17 @@ export default function GraphView({
     return () => {
       isActive = false;
     };
-  }, [graphId, orientation, showSubgraphs]);
+  }, [graphId, orientation, showSubgraphs, handleOpenSubgraph, onGraphMeta, setEdges, setNodes]);
 
   useEffect(() => {
-    if (!executionEvent || !executionEvent.event) {
-      return;
-    }
-
-    const { event, state, from_state: fromState, to_state: toState } = executionEvent;
-
-    if (event === "state_enter" && state) {
-      activeStatesRef.current.add(state);
-    }
-
-    if (event === "state_exit" && state) {
-      activeStatesRef.current.delete(state);
-    }
-
-    if (event === "edge_enter") {
-      if (toState) {
-        activeStatesRef.current.add(toState);
-      }
-      if (fromState && toState) {
-        activeEdgesRef.current.add(getEdgeKey(fromState, toState));
-      }
-    }
-
-    if (event === "edge_exit" || event === "edge_error") {
-      if (toState) {
-        activeStatesRef.current.delete(toState);
-      }
-      if (fromState && toState) {
-        activeEdgesRef.current.delete(getEdgeKey(fromState, toState));
-      }
-    }
-
-    if (event === "complete" || event === "error") {
-      activeStatesRef.current.clear();
-      activeEdgesRef.current.clear();
-    }
-
     setNodes((currentNodes) =>
-      currentNodes.map((node) => {
-        const baseStyle = node.data?.baseStyle || {};
-        if (activeStatesRef.current.has(node.data?.stateId)) {
-          return {
-            ...node,
-            style: {
-              ...baseStyle,
-              border: "3px solid #22c55e",
-              background: "#dcfce7",
-            },
-          };
-        }
-
-        return {
-          ...node,
-          style: { ...baseStyle },
-        };
-      })
+      currentNodes.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          execution: getNodeExecution(node, executionState),
+        },
+      }))
     );
 
     setEdges((currentEdges) =>
@@ -240,13 +212,20 @@ export default function GraphView({
         ...edge,
         data: {
           ...edge.data,
-          active: activeEdgesRef.current.has(
-            getEdgeKey(edge.data?.fromState, edge.data?.toState)
-          ),
+          execution:
+            executionState?.edges?.[String(edge.data?.edgeId)] ||
+            executionState?.edges?.[
+              [
+                edge.data?.fromState || "",
+                edge.data?.toState || "",
+                edge.data?.edgeOrder ?? 0,
+              ].join("->")
+            ] ||
+            null,
         },
       }))
     );
-  }, [executionEvent]);
+  }, [executionState, setEdges, setNodes]);
 
   return (
     <div
@@ -260,6 +239,7 @@ export default function GraphView({
     >
       {children}
       {executionControls}
+      <ExecutionStatusBar executionState={executionState} />
 
       <div style={{ width: "100%", flex: 1, minHeight: 420 }}>
         <ReactFlow
@@ -285,6 +265,7 @@ export default function GraphView({
         open={modalState.open}
         graph={modalState.graph}
         breadcrumb={modalState.breadcrumb}
+        executionState={executionState}
         onClose={() => setModalState({ open: false, graph: null, breadcrumb: [] })}
         onOpenSubgraph={handleOpenSubgraph}
       />

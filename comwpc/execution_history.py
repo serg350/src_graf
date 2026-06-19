@@ -52,14 +52,16 @@ def serialize_execution_event(event: GraphExecutionEvent) -> dict:
     Вход: GraphExecutionEvent из БД.
     Выход: JSON-совместимый словарь события.
     """
-    return {
+    serialized = dict(event.raw_event or {})
+    serialized.update({
         "sequence": event.sequence,
         "event": event.event_type,
         "state": event.state,
         "message": event.message,
         "timestamp": event.occurred_at.timestamp(),
         "data": event.payload,
-    }
+    })
+    return serialized
 
 
 def serialize_execution_session(session: GraphExecutionSession) -> dict:

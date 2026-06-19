@@ -5,14 +5,14 @@
   "target_E": 120.0,
   "best_Vf": 0.5173234719438266,
   "best_theta_deg": 3.963984828489945,
-  "best_E_effective": 119.6212499527503,
+  "best_E_effective": 119.60356346217245,
   "best_density": 1.5103940831662959,
-  "best_modulus_error": 0.37875004724969585,
-  "best_score": 0.38073034309138104,
+  "best_modulus_error": 0.3964365378275545,
+  "best_score": 0.3984168336692397,
   "best_matrix_benchmark": {
-    "correction": 0.030067033982361567,
+    "correction": 0.01238054340450182,
     "dense_entries": 16777216,
-    "elapsed_ms": 392.989205,
+    "elapsed_ms": 373.314273,
     "matrix_bytes": 134217728,
     "response": 1.7686490577859744,
     "size": 4096,
@@ -23,28 +23,28 @@
     "0": {
       "worker_id": "cpp-worker-1",
       "operation": "pso_evaluate_shard",
-      "elapsed_ms": 3545.46152,
+      "elapsed_ms": 3274.602847,
       "shard_index": 0,
       "result_count": 8
     },
     "1": {
       "worker_id": "cpp-worker-1",
       "operation": "pso_evaluate_shard",
-      "elapsed_ms": 3530.80886,
+      "elapsed_ms": 3218.629554,
       "shard_index": 1,
       "result_count": 8
     },
     "2": {
       "worker_id": "cpp-worker-1",
       "operation": "pso_evaluate_shard",
-      "elapsed_ms": 3603.888296,
+      "elapsed_ms": 3578.897524,
       "shard_index": 2,
       "result_count": 8
     },
     "3": {
       "worker_id": "cpp-worker-1",
       "operation": "pso_evaluate_shard",
-      "elapsed_ms": 3363.907021,
+      "elapsed_ms": 3248.783733,
       "shard_index": 3,
       "result_count": 8
     }
@@ -52,16 +52,16 @@
   "history": [
     {
       "iteration": 0,
-      "score": 4.786664153114821,
-      "modulus_error": 4.7843337770486585,
+      "score": 4.804201895628204,
+      "modulus_error": 4.801871519562042,
       "Vf": 0.5056541311278976,
       "theta_deg": 6.519265800078848,
-      "E_effective": 115.21566622295134,
+      "E_effective": 115.19812848043796,
       "density": 1.5033924786767385,
       "matrix_benchmark": {
-        "correction": 0.029814162272754036,
+        "correction": 0.012276419759369309,
         "dense_entries": 16777216,
-        "elapsed_ms": 562.964179,
+        "elapsed_ms": 389.24921,
         "matrix_bytes": 134217728,
         "response": 1.7537742513384726,
         "size": 4096,
@@ -71,16 +71,16 @@
     },
     {
       "iteration": 1,
-      "score": 0.38073034309138104,
-      "modulus_error": 0.37875004724969585,
+      "score": 0.3984168336692397,
+      "modulus_error": 0.3964365378275545,
       "Vf": 0.5173234719438266,
       "theta_deg": 3.963984828489945,
-      "E_effective": 119.6212499527503,
+      "E_effective": 119.60356346217245,
       "density": 1.5103940831662959,
       "matrix_benchmark": {
-        "correction": 0.030067033982361567,
+        "correction": 0.01238054340450182,
         "dense_entries": 16777216,
-        "elapsed_ms": 392.989205,
+        "elapsed_ms": 373.314273,
         "matrix_bytes": 134217728,
         "response": 1.7686490577859744,
         "size": 4096,

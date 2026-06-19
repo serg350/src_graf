@@ -60,14 +60,91 @@ class Selector(Func):
 
 
 class Transfer:
-    def __init__(self, edge, output_state, order=0):
+    def __init__(self, edge, output_state, order=0, event_id=None):
         self.edge = edge
         self.output_state = output_state
         self.order = order
+        self.event_id = event_id
 
     def transfer(self, data, dynamic_keys_mapping={}):
         self.edge.morph(data, dynamic_keys_mapping)
         return self.output_state
+
+
+def _edge_event_metadata(state, transfer, data=None, duration_ms=None):
+    morph_func = transfer.edge.morph_f
+    executor_spec = getattr(morph_func.func, "_comsdk_executor_spec", None) or {}
+    metadata = {
+        "edge_id": str(transfer.event_id) if transfer.event_id is not None else None,
+        "edge_order": transfer.order,
+        "edge_comment": transfer.edge.comment or "",
+        "from_state": state.name if state else None,
+        "to_state": transfer.output_state.name if transfer.output_state else None,
+        "morph_module": morph_func.module or "",
+        "morph_func": morph_func.name or "",
+        "executor_type": executor_spec.get("executor_type") or "",
+        "executor_operation": executor_spec.get("operation") or "",
+    }
+    if duration_ms is not None:
+        metadata["duration_ms"] = duration_ms
+
+    output_key = executor_spec.get("output_key")
+    if data is not None and output_key and output_key in data:
+        result = data[output_key]
+        if isinstance(result, dict):
+            metadata["worker_id"] = result.get("worker_id")
+            metadata["worker_elapsed_ms"] = result.get("elapsed_ms")
+            metadata["operation"] = result.get("operation")
+            metadata["shard_index"] = result.get("shard_index")
+    return metadata
+
+
+def _run_observed_transfer(
+    transfer,
+    data,
+    dynamic_keys_mapping,
+    state=None,
+    observer=None,
+):
+    metadata = _edge_event_metadata(state, transfer)
+    started_at = time.perf_counter()
+    if observer is not None:
+        observer("edge_enter", state, data, metadata)
+    try:
+        next_state = transfer.transfer(
+            data,
+            dynamic_keys_mapping=dynamic_keys_mapping,
+        )
+    except Exception:
+        if observer is not None:
+            duration_ms = (time.perf_counter() - started_at) * 1000.0
+            observer(
+                "edge_error",
+                state,
+                data,
+                _edge_event_metadata(
+                    state,
+                    transfer,
+                    data=data,
+                    duration_ms=duration_ms,
+                ),
+            )
+        raise
+
+    if observer is not None:
+        duration_ms = (time.perf_counter() - started_at) * 1000.0
+        observer(
+            "edge_exit",
+            state,
+            data,
+            _edge_event_metadata(
+                state,
+                transfer,
+                data=data,
+                duration_ms=duration_ms,
+            ),
+        )
+    return next_state
 
 
 def _summarize_event_value(value, depth=0):
@@ -373,9 +450,17 @@ class State:
         self._activate_input_edge(implicit_parallelization_info)
         #self.activated_input_edges_number += 1
         print('\trequired input: {}, active: {}, looped: {}'.format(self.input_edges_number, self.activated_input_edges_number, self.looped_edges_number))
+        activation_metadata = {
+            "active_inputs": self.activated_input_edges_number,
+            "required_inputs": self.input_edges_number - self.looped_edges_number,
+        }
 #        print('qwer')
         if not self._ready_to_transfer(implicit_parallelization_info):
+            if observer is not None:
+                observer("state_wait", self, data, activation_metadata)
             return None, None # it means that this state waits for some incoming edges (it is a point of collision of several edges)
+        if observer is not None:
+            observer("state_ready", self, data, activation_metadata)
         self._reset_activity(implicit_parallelization_info)
         if self.is_term_state:
             implicit_parallelization_info = None
@@ -475,7 +560,16 @@ class SerialParallelizationPolicy:
             # print("MORPHING FROM {}".format(state.name))
             if array_keys_mapping is None:
                 dynamic_keys_mapping = build_dynamic_keys_mapping(implicit_parallelization_info)
-                next_transfers = [partial(t.transfer, dynamic_keys_mapping=dynamic_keys_mapping) for t in transfers]
+                next_transfers = [
+                    partial(
+                        _run_observed_transfer,
+                        t,
+                        dynamic_keys_mapping=dynamic_keys_mapping,
+                        state=state,
+                        observer=observer,
+                    )
+                    for t in transfers
+                ]
                 next_impl_para_infos = [implicit_parallelization_info for _ in transfers]
  #               print('\t\t {}'.format(implicit_parallelization_infos))
             else:
@@ -493,7 +587,15 @@ class SerialParallelizationPolicy:
                     dynamic_keys_mapping = build_dynamic_keys_mapping(implicit_parallelization_info_)
 #                    print(dynamic_keys_mapping)
                     #next_transfers.append(partial(transfers[0].edge.morph, dynamic_keys_mapping=dynamic_keys_mapping))
-                    next_transfers.append(partial(transfers[0].transfer, dynamic_keys_mapping=dynamic_keys_mapping))
+                    next_transfers.append(
+                        partial(
+                            _run_observed_transfer,
+                            transfers[0],
+                            dynamic_keys_mapping=dynamic_keys_mapping,
+                            state=state,
+                            observer=observer,
+                        )
+                    )
                     next_impl_para_infos.append(implicit_parallelization_info_)
             cur_transfers = []
             cur_impl_para_infos = []
@@ -551,21 +653,13 @@ class ThreadParallelizationPolicy(SerialParallelizationPolicy):
             dynamic_keys_mapping = build_dynamic_keys_mapping(implicit_parallelization_info)
 
             def run_transfer(transfer):
-                metadata = {
-                    "from_state": state.name if state else None,
-                    "to_state": transfer.output_state.name if transfer.output_state else None,
-                }
-                if observer is not None:
-                    observer("edge_enter", state, data, metadata)
-                try:
-                    next_state = transfer.transfer(data, dynamic_keys_mapping=dynamic_keys_mapping)
-                except Exception:
-                    if observer is not None:
-                        observer("edge_error", state, data, metadata)
-                    raise
-                if observer is not None:
-                    observer("edge_exit", state, data, metadata)
-                return next_state
+                return _run_observed_transfer(
+                    transfer,
+                    data,
+                    dynamic_keys_mapping,
+                    state=state,
+                    observer=observer,
+                )
 
             with ThreadPoolExecutor(max_workers=len(transfers)) as executor:
                 next_states = list(executor.map(run_transfer, transfers))

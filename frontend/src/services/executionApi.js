@@ -1,7 +1,7 @@
 import { buildApiUrl } from "./apiClient";
 import { getCSRFToken } from "./csrf";
 
-export function startExecution(graphId, data = {}) {
+export function startExecution(graphId, data = {}, sessionId = null) {
   return fetch(buildApiUrl(`/graph/${graphId}/start/`), {
     method: "POST",
     credentials: "include", // ← ВАЖНО
@@ -9,7 +9,10 @@ export function startExecution(graphId, data = {}) {
       "Content-Type": "application/json",
       "X-CSRFToken": getCSRFToken(), // ← ВАЖНО
     },
-    body: JSON.stringify({ data }),
+    body: JSON.stringify({
+      data,
+      ...(sessionId ? { session_id: sessionId } : {}),
+    }),
   }).then(async (r) => {
     const payload = await r.json().catch(() => ({}));
     if (!r.ok) {
