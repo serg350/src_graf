@@ -1,8 +1,11 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
+#include <ctime>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -12,6 +15,7 @@
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <nlohmann/json.hpp>
@@ -202,10 +206,49 @@ std::string json_escape(const std::string& value) {
     return out.str();
 }
 
+std::uint64_t current_memory_bytes() {
+    std::ifstream statm("/proc/self/statm");
+    long pages = 0;
+    long resident_pages = 0;
+
+    if (statm >> pages >> resident_pages) {
+        long page_size = sysconf(_SC_PAGESIZE);
+        if (page_size > 0 && resident_pages > 0) {
+            return static_cast<std::uint64_t>(resident_pages) *
+                   static_cast<std::uint64_t>(page_size);
+        }
+    }
+
+    struct rusage usage {};
+    if (getrusage(RUSAGE_SELF, &usage) == 0 && usage.ru_maxrss > 0) {
+        return static_cast<std::uint64_t>(usage.ru_maxrss) * 1024ULL;
+    }
+
+    return 0;
+}
+
+struct WorkerMetrics {
+    double cpu_percent;
+    std::uint64_t memory_bytes;
+};
+
+WorkerMetrics collect_worker_metrics(std::clock_t started_cpu, double elapsed_ms) {
+    std::clock_t finished_cpu = std::clock();
+    double cpu_ms = 1000.0 * static_cast<double>(finished_cpu - started_cpu) /
+                    static_cast<double>(CLOCKS_PER_SEC);
+    double cpu_percent = elapsed_ms > 0.0 ? (cpu_ms / elapsed_ms) * 100.0 : 0.0;
+
+    return WorkerMetrics{
+        cpu_percent,
+        current_memory_bytes(),
+    };
+}
+
 std::string build_compute_response(
     const std::string& operation,
     const std::string& worker_id,
     double elapsed_ms,
+    const WorkerMetrics& metrics,
     const std::vector<double>& result
 ) {
     std::ostringstream out;
@@ -214,6 +257,9 @@ std::string build_compute_response(
     out << "\"operation\":\"" << json_escape(operation) << "\",";
     out << "\"worker_id\":\"" << json_escape(worker_id) << "\",";
     out << "\"elapsed_ms\":" << elapsed_ms << ",";
+    out << "\"cpu_percent\":" << metrics.cpu_percent << ",";
+    out << "\"memory_bytes\":" << metrics.memory_bytes << ",";
+    out << "\"memory_mb\":" << (static_cast<double>(metrics.memory_bytes) / 1048576.0) << ",";
     out << "\"result\":[";
 
     for (std::size_t i = 0; i < result.size(); ++i) {
@@ -267,6 +313,7 @@ void send_binary_response(
     const std::string& operation,
     const std::string& worker_id,
     double elapsed_ms,
+    const WorkerMetrics& metrics,
     const std::vector<double>& result
 ) {
     const char* body = reinterpret_cast<const char*>(result.data());
@@ -279,6 +326,9 @@ void send_binary_response(
     response << "X-Operation: " << operation << "\r\n";
     response << "X-Worker-Id: " << worker_id << "\r\n";
     response << "X-Elapsed-Ms: " << elapsed_ms << "\r\n";
+    response << "X-Cpu-Percent: " << metrics.cpu_percent << "\r\n";
+    response << "X-Memory-Bytes: " << metrics.memory_bytes << "\r\n";
+    response << "X-Memory-Mb: " << (static_cast<double>(metrics.memory_bytes) / 1048576.0) << "\r\n";
     response << "Connection: close\r\n";
     response << "\r\n";
 
@@ -534,14 +584,16 @@ void handle_client(int client_fd, const std::string& worker_id) {
             std::vector<double> x = extract_binary_x_values(body);
 
             auto started_at = std::chrono::steady_clock::now();
+            std::clock_t started_cpu = std::clock();
             std::vector<double> result = compute_values(operation, x);
             auto finished_at = std::chrono::steady_clock::now();
 
             double elapsed_ms = std::chrono::duration<double, std::milli>(
                 finished_at - started_at
             ).count();
+            WorkerMetrics metrics = collect_worker_metrics(started_cpu, elapsed_ms);
 
-            send_binary_response(client_fd, operation, worker_id, elapsed_ms, result);
+            send_binary_response(client_fd, operation, worker_id, elapsed_ms, metrics, result);
             return;
         }
 
@@ -553,16 +605,21 @@ void handle_client(int client_fd, const std::string& worker_id) {
             json payload = request_json.value("payload", json::object());
 
             auto started_at = std::chrono::steady_clock::now();
+            std::clock_t started_cpu = std::clock();
             json task_result = handle_task_operation(operation, payload);
             auto finished_at = std::chrono::steady_clock::now();
 
             double elapsed_ms = std::chrono::duration<double, std::milli>(
                 finished_at - started_at
             ).count();
+            WorkerMetrics metrics = collect_worker_metrics(started_cpu, elapsed_ms);
 
             task_result["operation"] = operation;
             task_result["worker_id"] = worker_id;
             task_result["elapsed_ms"] = elapsed_ms;
+            task_result["cpu_percent"] = metrics.cpu_percent;
+            task_result["memory_bytes"] = metrics.memory_bytes;
+            task_result["memory_mb"] = static_cast<double>(metrics.memory_bytes) / 1048576.0;
 
             send_response(client_fd, 200, task_result.dump());
             return;
@@ -578,17 +635,19 @@ void handle_client(int client_fd, const std::string& worker_id) {
         std::vector<double> x = extract_x_values(body);
 
         auto started_at = std::chrono::steady_clock::now();
+        std::clock_t started_cpu = std::clock();
         std::vector<double> result = compute_values(operation, x);
         auto finished_at = std::chrono::steady_clock::now();
 
         double elapsed_ms = std::chrono::duration<double, std::milli>(
             finished_at - started_at
         ).count();
+        WorkerMetrics metrics = collect_worker_metrics(started_cpu, elapsed_ms);
 
         send_response(
             client_fd,
             200,
-            build_compute_response(operation, worker_id, elapsed_ms, result)
+            build_compute_response(operation, worker_id, elapsed_ms, metrics, result)
         );
     } catch (const std::exception& exc) {
         send_response(client_fd, 400, build_error_response(exc.what()));

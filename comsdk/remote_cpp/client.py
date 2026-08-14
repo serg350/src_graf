@@ -19,6 +19,20 @@ def safe_len(value):
         return None
 
 
+def _to_float_or_none(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _to_int_or_none(value):
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
 def normalize_worker_url(value):
     return str(value).strip().strip('"').strip("'")
 
@@ -94,9 +108,20 @@ class RemoteCppClient:
         self.encoding = encoding
         self.max_points = int(max_points) if max_points is not None else None
         self._lock = threading.Lock()
+        self._thread_local = threading.local()
         self._rr_index = 0
         self._in_flight = {worker: 0 for worker in self.workers}
         logger.debug("C++ workers normalized: %s", self.workers)
+
+    def get_last_response_metadata(self):
+        return getattr(self._thread_local, "response_metadata", {})
+
+    def _set_last_response_metadata(self, metadata):
+        self._thread_local.response_metadata = {
+            key: value
+            for key, value in (metadata or {}).items()
+            if value is not None and value != ""
+        }
 
     def compute(self, operation, x):
         operation = str(operation).strip()
@@ -135,6 +160,7 @@ class RemoteCppClient:
 
             try:
                 result = self._send_compute(worker, operation, x)
+                metadata = self.get_last_response_metadata()
                 duration = time.perf_counter() - started_at
                 logger.info(
                     "[CPP] done operation=%s worker=%s encoding=%s points=%s result_points=%s duration_s=%.3f attempt=%s/%s",
@@ -147,6 +173,12 @@ class RemoteCppClient:
                     attempt,
                     attempts_count,
                 )
+                self._set_last_response_metadata({
+                    **metadata,
+                    "operation": metadata.get("operation") or operation,
+                    "worker_id": metadata.get("worker_id") or worker,
+                    "elapsed_ms": metadata.get("elapsed_ms") or duration * 1000.0,
+                })
                 return result
             except Exception as exc:
                 duration = time.perf_counter() - started_at
@@ -195,6 +227,15 @@ class RemoteCppClient:
 
             try:
                 result = self._send_task_json(worker, operation, payload)
+                if isinstance(result, dict):
+                    self._set_last_response_metadata({
+                        "operation": result.get("operation") or operation,
+                        "worker_id": result.get("worker_id") or worker,
+                        "elapsed_ms": result.get("elapsed_ms"),
+                        "cpu_percent": result.get("cpu_percent"),
+                        "memory_bytes": result.get("memory_bytes"),
+                        "memory_mb": result.get("memory_mb"),
+                    })
                 duration = time.perf_counter() - started_at
                 result_count = (
                     safe_len(result.get("results", []))
@@ -284,6 +325,15 @@ class RemoteCppClient:
         )
 
         with NO_PROXY_OPENER.open(request, timeout=self.timeout) as response:
+            headers = response.info()
+            self._set_last_response_metadata({
+                "operation": headers.get("X-Operation") or operation,
+                "worker_id": headers.get("X-Worker-Id") or worker,
+                "elapsed_ms": _to_float_or_none(headers.get("X-Elapsed-Ms")),
+                "cpu_percent": _to_float_or_none(headers.get("X-Cpu-Percent")),
+                "memory_bytes": _to_int_or_none(headers.get("X-Memory-Bytes")),
+                "memory_mb": _to_float_or_none(headers.get("X-Memory-Mb")),
+            })
             return from_little_endian_float64_bytes(response.read())
 
     def _send_compute_json(self, worker, operation, x):
@@ -306,5 +356,14 @@ class RemoteCppClient:
 
         if "result" not in payload:
             raise RuntimeError(f"Invalid C++ worker response: {payload}")
+
+        self._set_last_response_metadata({
+            "operation": payload.get("operation") or operation,
+            "worker_id": payload.get("worker_id"),
+            "elapsed_ms": payload.get("elapsed_ms"),
+            "cpu_percent": payload.get("cpu_percent"),
+            "memory_bytes": payload.get("memory_bytes"),
+            "memory_mb": payload.get("memory_mb"),
+        })
 
         return payload["result"]

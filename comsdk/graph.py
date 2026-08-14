@@ -94,8 +94,22 @@ def _edge_event_metadata(state, transfer, data=None, duration_ms=None):
         if isinstance(result, dict):
             metadata["worker_id"] = result.get("worker_id")
             metadata["worker_elapsed_ms"] = result.get("elapsed_ms")
+            metadata["cpu_percent"] = result.get("cpu_percent")
+            metadata["memory_bytes"] = result.get("memory_bytes")
+            metadata["memory_mb"] = result.get("memory_mb")
             metadata["operation"] = result.get("operation")
             metadata["shard_index"] = result.get("shard_index")
+    if data is not None and output_key:
+        cpp_metrics = data.get(f"{output_key}__cpp_metrics")
+        if isinstance(cpp_metrics, dict):
+            metadata["worker_id"] = metadata.get("worker_id") or cpp_metrics.get("worker_id")
+            metadata["worker_elapsed_ms"] = (
+                metadata.get("worker_elapsed_ms") or cpp_metrics.get("elapsed_ms")
+            )
+            metadata["cpu_percent"] = metadata.get("cpu_percent") or cpp_metrics.get("cpu_percent")
+            metadata["memory_bytes"] = metadata.get("memory_bytes") or cpp_metrics.get("memory_bytes")
+            metadata["memory_mb"] = metadata.get("memory_mb") or cpp_metrics.get("memory_mb")
+            metadata["operation"] = metadata.get("operation") or cpp_metrics.get("operation")
     return metadata
 
 

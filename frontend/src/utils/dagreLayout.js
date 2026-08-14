@@ -1,7 +1,9 @@
 import dagre from "dagre";
 
-const DEFAULT_NODE_WIDTH = 196;
-const DEFAULT_NODE_HEIGHT = 72;
+const DEFAULT_NODE_WIDTH = 152;
+const DEFAULT_NODE_HEIGHT = 70;
+const SUBGRAPH_NODE_WIDTH = 174;
+const SUBGRAPH_NODE_HEIGHT = 66;
 
 function estimateEdgeLabelSize(edge) {
   const label = String(edge.comment || edge.label || "");
@@ -11,25 +13,25 @@ function estimateEdgeLabelSize(edge) {
   };
 }
 
-export function applyDagreLayout(nodes, edges, direction = "LR") {
+export function applyDagreLayout(nodes, edges, direction = "TB") {
   const g = new dagre.graphlib.Graph({ multigraph: true });
   const isHorizontal = direction === "LR";
 
   g.setGraph({
     rankdir: direction,
-    ranksep: isHorizontal ? 175 : 120,
-    nodesep: isHorizontal ? 58 : 82,
-    edgesep: 34,
-    marginx: 36,
-    marginy: 36,
+    ranksep: isHorizontal ? 140 : 82,
+    nodesep: isHorizontal ? 44 : 44,
+    edgesep: 24,
+    marginx: 42,
+    marginy: 34,
     acyclicer: "greedy",
     ranker: "network-simplex",
   });
   g.setDefaultEdgeLabel(() => ({}));
 
   nodes.forEach((node) => {
-    const width = node.type === "subgraph" ? 210 : DEFAULT_NODE_WIDTH;
-    const height = DEFAULT_NODE_HEIGHT;
+    const width = node.type === "subgraph" ? SUBGRAPH_NODE_WIDTH : DEFAULT_NODE_WIDTH;
+    const height = node.type === "subgraph" ? SUBGRAPH_NODE_HEIGHT : DEFAULT_NODE_HEIGHT;
     g.setNode(node.id, { width, height });
   });
 

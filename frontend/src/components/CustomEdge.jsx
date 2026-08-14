@@ -17,7 +17,7 @@ function buildBackEdgePath({
   const laneOffset = (lane || 0) * 34;
 
   if (orientation === "TB") {
-    const loopX = Math.max(sourceX, targetX) + 130 + laneOffset;
+    const loopX = Math.max(sourceX, targetX) + 98 + laneOffset;
     return {
       path: `M ${sourceX} ${sourceY} L ${loopX} ${sourceY} L ${loopX} ${targetY} L ${targetX} ${targetY}`,
       labelX: loopX,
@@ -73,8 +73,21 @@ export default function CustomEdge(props) {
   const edgeComment = data?.comment || label || "";
   const execution = data?.execution;
   const phase = execution?.phase;
-  const stroke = PHASE_COLORS[phase] || "#475569";
+  const isSelected = Boolean(data?.selected);
+  const isRelatedSelected = Boolean(data?.relatedSelected);
+  const stroke = isSelected
+    ? "#2563eb"
+    : isRelatedSelected
+      ? "#3b82f6"
+      : PHASE_COLORS[phase] || "#475569";
   const isRunning = phase === "running";
+  const strokeWidth = isSelected
+    ? 3.4
+    : isRunning || phase === "failed"
+      ? 3
+      : phase === "completed" || isRelatedSelected
+        ? 2
+        : 1.4;
   const operation =
     execution?.executor_operation ||
     data?.executorOperation ||
@@ -93,15 +106,32 @@ export default function CustomEdge(props) {
       <g>
         <path
           id={id}
+          className="react-flow__edge-path"
           d={route.path}
           fill="none"
           stroke={stroke}
-          strokeWidth={isRunning || phase === "failed" ? 3 : phase === "completed" ? 2 : 1.5}
+          strokeWidth={strokeWidth}
           markerEnd={`url(#arrow-${id})`}
+          onClick={() => data?.onSelectEdge?.()}
           style={{
-            filter: isRunning ? "drop-shadow(0 0 4px rgba(249, 115, 22, 0.48))" : "none",
+            cursor: "pointer",
+            filter:
+              isSelected
+                ? "drop-shadow(0 0 5px rgba(37, 99, 235, 0.38))"
+                : isRunning
+                  ? "drop-shadow(0 0 4px rgba(249, 115, 22, 0.48))"
+                  : "none",
+            pointerEvents: "stroke",
             transition: "stroke 160ms ease, stroke-width 160ms ease",
           }}
+        />
+        <path
+          d={route.path}
+          fill="none"
+          stroke="transparent"
+          strokeWidth={18}
+          onClick={() => data?.onSelectEdge?.()}
+          style={{ cursor: "pointer", pointerEvents: "stroke" }}
         />
 
         <defs>
@@ -129,8 +159,17 @@ export default function CustomEdge(props) {
             style={{
               position: "absolute",
               transform: `translate(-50%, -50%) translate(${route.labelX}px, ${route.labelY}px)`,
-              background: isRunning ? "#fff7ed" : phase === "failed" ? "#fff1f1" : "#ffffff",
-              border: `1px solid ${isRunning || phase === "failed" ? stroke : "#cbd5e1"}`,
+              background:
+                isSelected
+                  ? "#eff6ff"
+                  : isRunning
+                    ? "#fff7ed"
+                    : phase === "failed"
+                      ? "#fff1f1"
+                      : "#ffffff",
+              border: `1px solid ${
+                isSelected || isRunning || phase === "failed" ? stroke : "#cbd5e1"
+              }`,
               borderRadius: 6,
               boxShadow: "0 1px 4px rgba(15, 23, 42, 0.12)",
               color: "#334155",
@@ -139,10 +178,15 @@ export default function CustomEdge(props) {
               maxWidth: 170,
               padding: "3px 7px",
               pointerEvents: "auto",
+              cursor: "pointer",
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
-              zIndex: isRunning ? 8 : 2,
+              zIndex: isSelected || isRunning ? 8 : 2,
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+              data?.onSelectEdge?.();
             }}
           >
             {edgeComment ? (

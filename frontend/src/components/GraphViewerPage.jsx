@@ -18,6 +18,18 @@ import {
 } from "../utils/executionState";
 import ExecutionController from "./ExecutionController";
 
+function LegendRow({ color, label, description }) {
+  return (
+    <div className="gv-legend-row">
+      <span className="gv-legend-swatch" style={{ background: color }} />
+      <span>
+        <strong>{label}</strong>
+        <small>{description}</small>
+      </span>
+    </div>
+  );
+}
+
 function ViewerToolbar({
   orientation,
   showSubgraphs,
@@ -50,23 +62,7 @@ function ViewerToolbar({
           <div style={{ display: "flex", gap: 8 }}>
             <button
               type="button"
-              className="btn"
-              onClick={() => {
-                onOrientationChange("LR");
-                setShowMenu(false);
-              }}
-              style={{
-                padding: "8px 10px",
-                borderRadius: 8,
-                background: orientation === "LR" ? "#eef4ff" : "transparent",
-              }}
-            >
-              Слева направо
-            </button>
-
-            <button
-              type="button"
-              className="btn"
+              className="btn gv-dropdown-button"
               onClick={() => {
                 onOrientationChange("TB");
                 setShowMenu(false);
@@ -79,13 +75,29 @@ function ViewerToolbar({
             >
               Сверху вниз
             </button>
+
+            <button
+              type="button"
+              className="btn gv-dropdown-button"
+              onClick={() => {
+                onOrientationChange("LR");
+                setShowMenu(false);
+              }}
+              style={{
+                padding: "8px 10px",
+                borderRadius: 8,
+                background: orientation === "LR" ? "#eef4ff" : "transparent",
+              }}
+            >
+              Слева направо
+            </button>
           </div>
 
           <hr style={{ width: "100%", border: 0, borderTop: "1px solid #e2e8f0" }} />
 
           <button
             type="button"
-            className="btn"
+            className="btn gv-dropdown-button"
             onClick={() => {
               onToggleSubgraphs();
               setShowMenu(false);
@@ -104,6 +116,40 @@ function ViewerToolbar({
               {showSubgraphs ? "Подграфы выделены" : "Подграфы как обычные узлы"}
             </span>
           </button>
+
+          <hr style={{ width: "100%", border: 0, borderTop: "1px solid #e2e8f0" }} />
+
+          <section className="gv-legend">
+            <div className="gv-legend-title">Легенда обхода</div>
+            <LegendRow
+              color="#f97316"
+              label="Оранжевый"
+              description="выполняется узел или переход; при расчете morphism подсвечивается ребро"
+            />
+            <LegendRow
+              color="#22c55e"
+              label="Зеленый"
+              description="элемент завершен"
+            />
+            <LegendRow
+              color="#3b82f6"
+              label="Синий"
+              description="узел ожидает входные ветки"
+            />
+            <LegendRow
+              color="#dc2626"
+              label="Красный"
+              description="ошибка выполнения"
+            />
+            <LegendRow
+              color="#2563eb"
+              label="Контур"
+              description="выбранный узел или ребро; история справа фильтруется по нему"
+            />
+            <div className="gv-legend-note">
+              Бейджи под узлами показывают время, CPU, RAM и C++ worker, если эти данные пришли из события.
+            </div>
+          </section>
         </div>
       </div>
     </div>
@@ -112,8 +158,9 @@ function ViewerToolbar({
 
 export default function GraphViewerPage() {
   const { id } = useParams();
-  const [orientation, setOrientation] = useState("LR");
+  const [orientation, setOrientation] = useState("TB");
   const [showSubgraphs, setShowSubgraphs] = useState(true);
+  const [selectedGraphElement, setSelectedGraphElement] = useState(null);
   const [executionState, dispatchExecution] = useReducer(
     executionReducer,
     undefined,
@@ -135,6 +182,7 @@ export default function GraphViewerPage() {
     setHistoryLoading(true);
     setHistoryError("");
     setHistorySessions([]);
+    setSelectedGraphElement(null);
     dispatchExecution({ type: "reset", sessionId: null });
 
     loadGraphExecutionHistory(id)
@@ -185,6 +233,8 @@ export default function GraphViewerPage() {
           sessions={historySessions}
           isLoading={historyLoading}
           error={historyError}
+          selectedElement={selectedGraphElement}
+          onClearSelection={() => setSelectedGraphElement(null)}
         />
       }
       headerActions={
@@ -201,6 +251,8 @@ export default function GraphViewerPage() {
         orientation={orientation}
         showSubgraphs={showSubgraphs}
         executionState={executionState}
+        selectedElement={selectedGraphElement}
+        onSelectionChange={setSelectedGraphElement}
         onGraphMeta={setGraphMeta}
         executionControls={
           <ExecutionController

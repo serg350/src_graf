@@ -8,8 +8,12 @@ export default function SubgraphNode({
   sourcePosition = Position.Right,
 }) {
   const phase = data.execution?.phase;
+  const isSelected = Boolean(data.selected);
+  const isRelatedSelected = Boolean(data.relatedSelected);
   const border =
-    phase === "failed"
+    isSelected
+      ? "#2563eb"
+      : phase === "failed"
       ? "#dc2626"
       : phase === "active"
         ? "#f97316"
@@ -35,24 +39,31 @@ export default function SubgraphNode({
       style={{
         width: "100%",
         height: "100%",
-        minWidth: 210,
-        minHeight: 72,
-        padding: data.comment ? "9px 12px" : "14px",
+        minWidth: 166,
+        minHeight: 52,
+        padding: data.comment ? "8px 10px" : "12px",
         background,
         border: `2px solid ${border}`,
         borderRadius: 8,
-        fontSize: 13,
+        fontSize: 12,
         fontWeight: 600,
         display: "flex",
         alignItems: "center",
         gap: 8,
         cursor: "pointer",
         position: "relative",
-        boxShadow: phase ? `0 0 0 3px ${border}24` : "0 1px 3px rgba(15, 23, 42, 0.1)",
+        boxShadow: isSelected
+          ? "0 0 0 4px rgba(37, 99, 235, 0.18), 0 8px 18px rgba(15, 23, 42, 0.14)"
+          : isRelatedSelected
+            ? "0 0 0 3px rgba(37, 99, 235, 0.12), 0 1px 4px rgba(15, 23, 42, 0.12)"
+            : phase
+              ? `0 0 0 3px ${border}24`
+              : "0 1px 3px rgba(15, 23, 42, 0.1)",
         transition: "background 160ms ease, border-color 160ms ease, box-shadow 160ms ease",
       }}
       onClick={(e) => {
         e.stopPropagation();
+        data.onSelectNode?.();
         data.onOpenSubgraph?.(data.subgraphId);
       }}
     >

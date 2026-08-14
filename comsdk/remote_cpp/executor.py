@@ -49,3 +49,7 @@ def execute_remote_cpp(data, operation, input_key, output_key):
         data[output_key] = client.compute_task(operation, input_value)
     else:
         data[output_key] = client.compute(operation, input_value)
+
+    metadata = client.get_last_response_metadata()
+    if metadata:
+        data[f"{output_key}__cpp_metrics"] = metadata

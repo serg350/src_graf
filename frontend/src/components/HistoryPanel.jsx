@@ -1,3 +1,8 @@
+import {
+  filterSessionsBySelectedElement,
+  getSelectedElementLabel,
+} from "../utils/executionHistoryFilter";
+
 const STATUS_META = {
   pending: {
     label: "Ожидает",
@@ -72,7 +77,22 @@ function renderJsonBlock(value) {
   );
 }
 
-export default function HistoryPanel({ sessions, isLoading, error }) {
+export default function HistoryPanel({
+  sessions,
+  isLoading,
+  error,
+  selectedElement,
+  onClearSelection,
+}) {
+  const visibleSessions = filterSessionsBySelectedElement(sessions, selectedElement);
+  const selectedLabel = getSelectedElementLabel(selectedElement);
+  const totalMatchedEvents = selectedElement
+    ? visibleSessions.reduce(
+        (total, session) => total + (session.filtered_event_count ?? session.events.length),
+        0
+      )
+    : 0;
+
   return (
     <div style={{ padding: 16, display: "grid", gap: 12 }}>
       <div
@@ -83,11 +103,34 @@ export default function HistoryPanel({ sessions, isLoading, error }) {
           borderBottom: "1px solid #d7e1ec",
         }}
       >
-        <div style={{ fontSize: 18, fontWeight: 700, color: "#274c6a" }}>
-          История обходов
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: "#274c6a" }}>
+            {selectedElement ? "История элемента" : "История обходов"}
+          </div>
+          {selectedElement ? (
+            <button
+              type="button"
+              className="btn"
+              title="Показать всю историю"
+              style={{
+                marginLeft: "auto",
+                padding: "5px 9px",
+                borderRadius: 8,
+                background: "#eef4ff",
+                color: "#375f84",
+                fontSize: 12,
+                fontWeight: 700,
+              }}
+              onClick={onClearSelection}
+            >
+              Сбросить
+            </button>
+          ) : null}
         </div>
         <div style={{ fontSize: 13, color: "#5f7184" }}>
-          Сохранённые сессии выполнения и входные параметры запуска.
+          {selectedElement
+            ? `${selectedElement.type === "edge" ? "Переход" : "Узел"}: ${selectedLabel}. Событий: ${totalMatchedEvents}.`
+            : "Сохранённые сессии выполнения и входные параметры запуска."}
         </div>
       </div>
 
@@ -133,7 +176,21 @@ export default function HistoryPanel({ sessions, isLoading, error }) {
         </div>
       ) : null}
 
-      {sessions.map((session) => {
+      {!isLoading && !error && selectedElement && sessions.length > 0 && visibleSessions.length === 0 ? (
+        <div
+          style={{
+            padding: 14,
+            borderRadius: 14,
+            background: "#f8fbfd",
+            border: "1px solid #d7e1ec",
+            color: "#5f7184",
+          }}
+        >
+          Для выбранного элемента пока нет событий в истории.
+        </div>
+      ) : null}
+
+      {visibleSessions.map((session) => {
         const status = STATUS_META[session.status] || STATUS_META.pending;
         return (
           <div
@@ -180,7 +237,11 @@ export default function HistoryPanel({ sessions, isLoading, error }) {
             </div>
 
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              <span className="gv-chip">Событий: {session.event_count}</span>
+              <span className="gv-chip">
+                {selectedElement
+                  ? `Найдено: ${session.filtered_event_count ?? session.events.length} из ${session.total_event_count ?? session.event_count}`
+                  : `Событий: ${session.event_count}`}
+              </span>
               <span className="gv-chip">Последнее состояние: {session.last_state || "—"}</span>
               <span className="gv-chip">Завершение: {formatDateTime(session.finished_at)}</span>
             </div>
